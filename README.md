@@ -34,6 +34,14 @@ Without contract IDs set, the API still boots and serves an empty
 dataset (useful for frontend development before contracts are deployed) —
 it logs a warning rather than failing.
 
+**Verified against a live deployment**, not just the in-process test
+environment: all four contracts are deployed to Stellar testnet (IDs and
+the exact flow exercised are in `contracts/TESTNET.md`), and this
+indexer was run against them for real — readings and a claim submitted
+on-chain were picked up within one poll cycle and correctly served back
+out through the REST API (region average computed correctly from real
+on-chain values, claim payout matched exactly).
+
 ```bash
 npm test                # 25 tests: parser, repository, poller (RPC mocked), API
 npm run typecheck
