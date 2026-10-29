@@ -1,5 +1,6 @@
 export interface Config {
   rpcUrl: string;
+  networkPassphrase: string;
   contracts: {
     deviceRegistry: string | undefined;
     submissionValidator: string | undefined;
@@ -14,6 +15,7 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     rpcUrl: env.STELLAR_RPC_URL ?? "https://soroban-testnet.stellar.org",
+    networkPassphrase: env.NETWORK_PASSPHRASE ?? "Test SDF Network ; September 2015",
     contracts: {
       deviceRegistry: env.DEVICE_REGISTRY_CONTRACT_ID,
       submissionValidator: env.SUBMISSION_VALIDATOR_CONTRACT_ID,

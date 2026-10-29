@@ -4,9 +4,12 @@
   "private": true,
   "description": "Backend for DriftMesh: indexes device/reading/claim/subscription events from the Soroban contracts and serves them over a REST API.",
   "type": "module",
+  "workspaces": [
+    "bindings/*"
+  ],
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build --workspaces --if-present && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -14,6 +17,7 @@
   "dependencies": {
     "@stellar/stellar-sdk": "^13.1.0",
     "better-sqlite3": "^11.7.0",
+    "device-registry": "*",
     "express": "^4.21.1"
   },
   "devDependencies": {
