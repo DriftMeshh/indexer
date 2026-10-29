@@ -3,6 +3,21 @@ import { openDb } from "./db/client.js";
 import { createApp } from "./api/app.js";
 import { startPolling } from "./ingest/poller.js";
 
+// This is a long-running service making outbound calls to Stellar RPC over
+// the real internet — transient network blips (a reset connection, a DNS
+// hiccup) are expected, not exceptional. Some of those surface as
+// unhandled rejections from the underlying HTTP client's connection-pool
+// internals rather than from our own awaited `fetchEvents`/`latestLedger`
+// calls (which are already try/caught in poller.ts's `startPolling`), so
+// they'd otherwise crash the whole process on something as mundane as one
+// dropped TLS handshake. Log and keep running instead.
+process.on("unhandledRejection", (reason) => {
+  console.error("[index] unhandled rejection (continuing):", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[index] uncaught exception (continuing):", err);
+});
+
 const config = loadConfig();
 const db = openDb(config.dbPath);
 
