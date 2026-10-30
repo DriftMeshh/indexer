@@ -86,7 +86,6 @@ npm run build && npm start   # production build
 
 **Medium**
 - Emit a `deactivated` event from `device-registry` and consume it here instead of leaving deactivation un-ingestable
-- Add a `get_device`-on-first-sight enrichment step to the poller so `owner`/`lat`/`lon` get populated without a contract change
 - Add pagination to `GET /devices` and `GET /devices/:address/readings`
 
 **High**
