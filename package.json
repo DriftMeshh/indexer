@@ -8,9 +8,9 @@
     "bindings/*"
   ],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "npm run build --workspaces --if-present && tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
