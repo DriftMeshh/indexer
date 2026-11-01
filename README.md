@@ -74,6 +74,10 @@ npm run build && npm start   # production build
   Postgres for multi-instance/production use is a drop-in-shaped change
   (the repository layer is the only place that touches SQL) but hasn't
   been done.
+- **`GET /readings` has no pagination.** Returns all readings for a
+  region+epoch in one response. For a high-volume deployment this could
+  become large; adding a `limit`/`offset` query param would follow the
+  same pattern as `GET /devices/:address/readings`.
 - **Polling, not a subscription.** `pollOnce` runs on a fixed interval
   (`POLL_INTERVAL_MS`). Soroban RPC doesn't currently offer a push/
   websocket event stream, so polling is the standard approach — but the
