@@ -11,6 +11,7 @@ Stellar RPC (getEvents) ──poll──▶ parser ──▶ SQLite ──▶ Ex
                                                      /devices, /devices/:a/readings,
                                                      /devices/:a/claims,
                                                      /regions/:code/average,
+                                                     /readings?region=&epoch=,
                                                      /subscriptions/:a
 ```
 
