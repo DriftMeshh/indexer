@@ -44,7 +44,7 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 25 tests: parser, repository, poller (RPC mocked), API
+npm test                # 38 tests: parser, repository, poller (RPC mocked), API
 npm run typecheck
 npm run build && npm start   # production build
 ```
