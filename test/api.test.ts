@@ -173,6 +173,30 @@ describe("API", () => {
     expect(res.body).toHaveProperty("error");
   });
 
+  it("GET /readings includes rejected (accepted=0) readings in results", async () => {
+    // Unlike regionAverage which only includes accepted=1, the raw listing
+    // returns all readings regardless of accepted status.
+    repo.insertReading(db, {
+      device_address: "DEV1",
+      device_type: "weather",
+      region_code: 42,
+      epoch: 7,
+      value: 100,
+      accepted: 0, // rejected reading
+      ledger: 103,
+      closed_at: "2026-01-01T00:03:00Z",
+      tx_hash: "TX_REJECTED",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    // Should include both the accepted and the rejected reading
+    expect(res.body.length).toBeGreaterThanOrEqual(2);
+    const accepted = res.body.filter((r: { accepted: number }) => r.accepted === 1);
+    const rejected = res.body.filter((r: { accepted: number }) => r.accepted === 0);
+    expect(accepted.length).toBeGreaterThanOrEqual(1);
+    expect(rejected.length).toBe(1);
+  });
+
   // ── Error-handling middleware ──────────────────────────────────────────────
 
   it("error-handling middleware returns JSON on unhandled route errors", async () => {
