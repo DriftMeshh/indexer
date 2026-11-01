@@ -173,6 +173,40 @@ describe("API", () => {
     expect(res.body).toHaveProperty("error");
   });
 
+  it("GET /readings does not return readings from a different epoch", async () => {
+    repo.insertReading(db, {
+      device_address: "DEV1",
+      device_type: "weather",
+      region_code: 42,
+      epoch: 8, // different epoch
+      value: 9999,
+      accepted: 1,
+      ledger: 200,
+      closed_at: "2026-02-01T00:00:00Z",
+      tx_hash: "TX_EPOCH8",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body.every((r: { epoch: number }) => r.epoch === 7)).toBe(true);
+  });
+
+  it("GET /readings does not return readings from a different region", async () => {
+    repo.insertReading(db, {
+      device_address: "DEV1",
+      device_type: "weather",
+      region_code: 99, // different region
+      epoch: 7,
+      value: 8888,
+      accepted: 1,
+      ledger: 201,
+      closed_at: "2026-02-01T00:01:00Z",
+      tx_hash: "TX_REGION99",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body.every((r: { region_code: number }) => r.region_code === 42)).toBe(true);
+  });
+
   it("GET /readings includes rejected (accepted=0) readings in results", async () => {
     // Unlike regionAverage which only includes accepted=1, the raw listing
     // returns all readings regardless of accepted status.
