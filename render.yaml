@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: driftmesh-indexer
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: STELLAR_RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: NETWORK_PASSPHRASE
+        value: "Test SDF Network ; September 2015"
+      - key: DEVICE_REGISTRY_CONTRACT_ID
+        value: CDH22S3L52HJNPF7SSGXEKEMU5IYSWPJCZ4MFK33ZIMFSGDYE2OTR4JN
+      - key: SUBMISSION_VALIDATOR_CONTRACT_ID
+        value: CAODW624PJOUXKLQVKGOPEVNS6KB7TIEXENMERYLV67WPW3ID7XMZWQH
+      - key: PAYMENT_STREAMER_CONTRACT_ID
+        value: CBTLTCT5YEWELJHCEP3NYAKLSW5BOGW5FUFUZ3R44VZVLS7RYTCVCB26
+      - key: SUBSCRIPTION_MARKET_CONTRACT_ID
+        value: CASBPGQZ5HC4NNDC2BMUJ2E6VKT56RTY2BWSBPHWNX3HJ7QWLLTBWJGB
+      - key: DB_PATH
+        value: ./data/driftmesh.sqlite
+      - key: POLL_INTERVAL_MS
+        value: "5000"
+    # No PORT here — Render injects its own and config.ts already reads
+    # it (env.PORT ?? 3001), so the service binds to whatever Render
+    # assigns automatically.

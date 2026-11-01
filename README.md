@@ -48,6 +48,26 @@ npm run typecheck
 npm run build && npm start   # production build
 ```
 
+## Deploying
+
+`render.yaml` is a ready-to-use [Render](https://render.com) blueprint
+— connect this repo on Render and it deploys as a free web service
+with the already-deployed testnet contract IDs pre-filled (they're
+public on-chain identifiers, not secrets). `GET /health` is wired up
+as the health check. Render injects its own `PORT`; `config.ts`
+already reads `env.PORT`, so no change is needed there.
+
+**One real caveat with the free plan**: it has no persistent disk, so
+`DB_PATH`'s SQLite file — and with it, the poller's stored cursor —
+resets on every redeploy. Combined with the "cursor seeding, not
+backfill" limitation below, that means a freshly (re)deployed instance
+starts from the *current* ledger, not from where it left off, so
+`GET /devices` will come back empty until new on-chain activity
+happens after that deploy. For a demo, the simplest fix is running
+`device-sdk`'s `npm run simulate` once against the redeployed instance
+to generate fresh events — or use Render's paid Starter plan with a
+persistent disk if you need state to survive redeploys.
+
 ## Known limitations
 
 - **The `device_registered` event only carries `device_type`.** The
