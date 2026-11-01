@@ -99,4 +99,91 @@ describe("API", () => {
     expect(res.status).toBe(200);
     expect(res.body.active).toBe(true);
   });
+
+  // ── GET /readings ─────────────────────────────────────────────────────────
+
+  it("GET /readings returns all readings for a region+epoch", async () => {
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ value: 2500, region_code: 42, epoch: 7 });
+  });
+
+  it("GET /readings returns empty array when no readings match", async () => {
+    const res = await request(app).get("/readings?region=99&epoch=1");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("GET /readings returns multiple readings across devices for same region+epoch", async () => {
+    repo.upsertDevice(db, {
+      address: "DEV2",
+      owner: "OWNER2",
+      device_type: "weather",
+      lat: 30,
+      lon: 40,
+      registered_at: 2000,
+    });
+    repo.insertReading(db, {
+      device_address: "DEV2",
+      device_type: "weather",
+      region_code: 42,
+      epoch: 7,
+      value: 3000,
+      accepted: 1,
+      ledger: 102,
+      closed_at: "2026-01-01T00:02:00Z",
+      tx_hash: "TX3",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+  });
+
+  it("GET /readings 400s when region param is missing", async () => {
+    const res = await request(app).get("/readings?epoch=7");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when epoch param is missing", async () => {
+    const res = await request(app).get("/readings?region=42");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when region param is not a number", async () => {
+    const res = await request(app).get("/readings?region=abc&epoch=7");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when epoch param is not a number", async () => {
+    const res = await request(app).get("/readings?region=42&epoch=not-a-number");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when both params are missing", async () => {
+    const res = await request(app).get("/readings");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  // ── Error-handling middleware ──────────────────────────────────────────────
+
+  it("error-handling middleware returns JSON on unhandled route errors", async () => {
+    // Temporarily mount a route that throws to verify the error handler
+    // catches it and returns a consistent JSON shape instead of Express's
+    // default HTML error page.
+    const { createApp: makeApp } = await import("../src/api/app.js");
+    const errorApp = makeApp(db);
+    errorApp.get("/boom", (_req, _res, next) => {
+      next(new Error("test explosion"));
+    });
+    const res = await request(errorApp).get("/boom");
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty("error");
+    expect(typeof res.body.error).toBe("string");
+  });
 });
