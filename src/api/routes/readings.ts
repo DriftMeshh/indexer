@@ -14,6 +14,13 @@ import * as repo from "../../db/repository.js";
  * resource being listed is readings (not a region sub-resource), and
  * the region/epoch combination is a filter applied via query params
  * rather than a hierarchical path relationship.
+ *
+ * Route placement decision:
+ *   - /regions/:code/readings  — would require a URL param for region and
+ *     a query param for epoch, mixing conventions inconsistently
+ *   - /readings?region=&epoch= — both filters are symmetric query params,
+ *     URL is clean, and it matches how data consumers naturally think about
+ *     the resource: "give me readings, filtered by region and epoch"
  */
 export function readingsRouter(db: Db): Router {
   const router = Router();
