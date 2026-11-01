@@ -138,6 +138,9 @@ describe("API", () => {
     const res = await request(app).get("/readings?region=42&epoch=7");
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
+    // Results should be ordered by ledger DESC — DEV2 (ledger 102) first
+    expect(res.body[0].device_address).toBe("DEV2");
+    expect(res.body[1].device_address).toBe("DEV1");
   });
 
   it("GET /readings 400s when region param is missing", async () => {
