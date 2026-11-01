@@ -42,6 +42,9 @@ export function readingsRouter(db: Db): Router {
     }
 
     const readings = repo.listReadingsForRegion(db, region, epoch);
+    // Always returns an array — empty when no readings exist for the
+    // given region+epoch combination. 404 would be wrong here because
+    // the absence of readings is a valid state, not a missing resource.
     res.json(readings);
   });
 
