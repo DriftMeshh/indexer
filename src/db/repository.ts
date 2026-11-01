@@ -93,6 +93,22 @@ export function regionAverage(db: Db, regionCode: number, epoch: number): number
   return row.avg;
 }
 
+/**
+ * Returns all individual readings for a given region code and epoch,
+ * ordered by ledger descending. Used by GET /readings?region=&epoch=.
+ */
+export function listReadingsForRegion(
+  db: Db,
+  regionCode: number,
+  epoch: number,
+): ReadingRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM readings WHERE region_code = ? AND epoch = ? ORDER BY ledger DESC`,
+    )
+    .all(regionCode, epoch) as ReadingRow[];
+}
+
 export function insertClaim(db: Db, row: Omit<ClaimRow, "id">): void {
   db.prepare(
     `INSERT OR IGNORE INTO claims (device_address, epoch, payout, ledger, closed_at, tx_hash)
