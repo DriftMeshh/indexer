@@ -82,7 +82,6 @@ npm run build && npm start   # production build
 ## Suggested Stellar Wave issues
 
 **Trivial**
-- Add a `GET /readings?region=&epoch=` endpoint listing raw readings (currently only per-device or aggregate-average views exist)
 - Add request logging / basic error-handling middleware to `api/app.ts`
 
 **Medium**
