@@ -95,12 +95,16 @@ export function regionAverage(db: Db, regionCode: number, epoch: number): number
 
 /**
  * Returns all individual readings for a given region code and epoch,
- * ordered by ledger descending. Used by GET /readings?region=&epoch=.
+ * ordered by ledger descending (most recent first). Used by GET /readings?region=&epoch=.
  *
  * Does NOT filter by `accepted` — returns both accepted and rejected readings
  * so the consumer can decide which subset matters to them. The existing
  * regionAverage only counts accepted=1 rows because an average of rejected
  * readings is meaningless; raw listing has no such restriction.
+ *
+ * Ordering by ledger DESC matches listReadingsForDevice, keeping the
+ * collection ordering consistent across both "per device" and "per region"
+ * reading queries.
  */
 export function listReadingsForRegion(
   db: Db,
