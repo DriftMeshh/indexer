@@ -23,9 +23,14 @@ export function readingsRouter(db: Db): Router {
     const epoch = Number(req.query.epoch);
 
     if (!Number.isFinite(region) || !Number.isFinite(epoch)) {
+      const missing: string[] = [];
+      if (!Number.isFinite(region)) missing.push("?region=");
+      if (!Number.isFinite(epoch)) missing.push("?epoch=");
       res
         .status(400)
-        .json({ error: "?region= and ?epoch= query params are required and must be numbers" });
+        .json({
+          error: `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} required and must be a number`,
+        });
       return;
     }
 
