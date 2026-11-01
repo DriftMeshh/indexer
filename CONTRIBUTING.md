@@ -41,6 +41,11 @@ already-scoped examples at each tier.
   add a function there rather than reaching into `db/client.ts`'s raw
   handle from elsewhere — this is what makes swapping SQLite for
   Postgres later a contained change instead of a rewrite.
+- **New top-level routes get their own file in `src/api/routes/`.**
+  Each route family lives in its own file and exports a factory function
+  that accepts a `Db` instance — see `devices.ts`, `regions.ts`,
+  `subscriptions.ts`, and `readings.ts` for the established pattern.
+  Wire the new router into `src/api/app.ts` with `app.use("/path", router(db))`.
 - **A crash is a bug, not an edge case.** This is a long-running
   service — see the `unhandledRejection`/`uncaughtException` handlers in
   `index.ts` and their commit message for why that fix exists. If your
