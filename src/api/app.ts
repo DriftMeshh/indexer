@@ -23,6 +23,11 @@ export function createApp(db: Db): Express {
   // duration in milliseconds. Runs after the response is finished so the
   // status code is final. Matches the [module] console.log style used in
   // poller.ts and index.ts.
+  //
+  // Uses res.on("finish") rather than inline logging before next() so that
+  // the status code and duration are both available — if we logged before
+  // calling next() we'd always see 200 regardless of what the route set,
+  // and we'd have no duration since the route hasn't run yet.
   app.use((req: Request, res: Response, next: NextFunction) => {
     const start = Date.now();
     res.on("finish", () => {
