@@ -234,15 +234,15 @@ describe("API", () => {
   // ── Error-handling middleware ──────────────────────────────────────────────
 
   it("error-handling middleware returns JSON on unhandled route errors", async () => {
-    // Temporarily mount a route that throws to verify the error handler
-    // catches it and returns a consistent JSON shape instead of Express's
-    // default HTML error page.
-    const { createApp: makeApp } = await import("../src/api/app.js");
-    const errorApp = makeApp(db);
-    errorApp.get("/boom", (_req, _res, next) => {
-      next(new Error("test explosion"));
-    });
-    const res = await request(errorApp).get("/boom");
+    // Force a real route handler to throw — querying a closed database —
+    // rather than appending a new route after `app` is already built.
+    // Express only forwards next(err) to error-handling middleware
+    // registered *after* the throwing handler in the stack; a route added
+    // post-hoc here would land after createApp's error handler and never
+    // reach it, so this instead exercises the handler in its real,
+    // already-correct position.
+    db.close();
+    const res = await request(app).get("/devices");
     expect(res.status).toBe(500);
     expect(res.body).toHaveProperty("error");
     expect(typeof res.body.error).toBe("string");

@@ -110,9 +110,6 @@ to survive both spin-downs and redeploys.
 
 ## Suggested Stellar Wave issues
 
-**Trivial**
-- Add request logging / basic error-handling middleware to `api/app.ts`
-
 **Medium**
 - Emit a `deactivated` event from `device-registry` and consume it here instead of leaving deactivation un-ingestable
 - Add pagination to `GET /devices` and `GET /devices/:address/readings`
