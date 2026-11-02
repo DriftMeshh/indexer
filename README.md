@@ -51,7 +51,24 @@ npm run build && npm start   # production build
 
 ## Deploying
 
-### Railway (recommended — no card required)
+Three hosting options are set up below. Free-tier card/signup policies
+on these platforms change often and even contradict their own docs in
+practice — each option here was checked live, not assumed from
+memory, as of November 2026; re-verify before relying on any of them.
+
+### Back4App Containers (currently the reliable no-card option)
+
+`Dockerfile` builds this service for [Back4App Containers](https://back4app.com/pricing/container-as-a-service)
+(or any other Docker-based host) — verified locally end-to-end: `docker
+build` succeeds, and the resulting image starts, binds to `PORT`,
+gracefully continues without a `.env` file, and serves real `/health`
+and `/devices` responses. Back4App's free tier is explicitly "no credit
+card required" in their own FAQ (0.25 CPU / 256MB RAM / 100GB transfer,
+deploy from GitHub, no spin-down). After connecting the repo, add the
+same env vars `render.yaml` lists below as the container's environment
+variables in Back4App's dashboard.
+
+### Railway (no card required, but new signups are currently paused)
 
 `railway.json` configures the build/start/health-check for [Railway](https://railway.com):
 connect this repo (Railway auto-detects Node via Nixpacks; `engines.node`
@@ -59,17 +76,15 @@ in `package.json` pins it to 22, avoiding the `better-sqlite3`
 prebuilt-binary ABI mismatch noted in `.github/workflows/ci.yml`), then
 add the same env vars `render.yaml` lists below (Railway's config-as-code
 doesn't set variable values itself, so this is a one-time manual step in
-its dashboard — same five minutes as adding any Vercel env var). Railway's
-free trial needs **no credit card to deploy** (confirmed directly on
-[Railway's pricing page](https://railway.com/pricing)): $5 of usage
-credit over a 30-day trial, which a service this light (0.5GB RAM) should
-comfortably stay within. Unlike Render's free tier, a Railway service
-doesn't spin down from inbound-traffic idleness — it only sleeps if you
-explicitly enable its opt-in "Serverless" setting, which **should stay
-off** for this service, since the poller's continuous outbound RPC calls
-mean it was never going to qualify as idle anyway, and sleeping would stop
-the poller entirely. Past the 30-day/$5 window, continuing requires either
-adding a card (~$1/month minimum usage) or letting the service pause.
+its dashboard). Railway's free trial needs **no credit card to deploy**
+(confirmed directly on [Railway's pricing page](https://railway.com/pricing)):
+$5 of usage credit over a 30-day trial, which a service this light
+(0.5GB RAM) should comfortably stay within, and unlike Render's free
+tier a Railway service doesn't spin down from inbound-traffic idleness.
+**As of early November 2026, Railway has new signups paused platform-wide**
+following an October 21 incident (see [status.railway.com](https://status.railway.com)) —
+check there before trying this option; it may be an existing-account-only
+option until that's resolved.
 
 ### Render (alternative — some accounts are asked to verify a card)
 
