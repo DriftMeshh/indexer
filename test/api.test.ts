@@ -99,4 +99,152 @@ describe("API", () => {
     expect(res.status).toBe(200);
     expect(res.body.active).toBe(true);
   });
+
+  // ── GET /readings ─────────────────────────────────────────────────────────
+
+  it("GET /readings returns all readings for a region+epoch", async () => {
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0]).toMatchObject({ value: 2500, region_code: 42, epoch: 7 });
+  });
+
+  it("GET /readings returns empty array when no readings match", async () => {
+    const res = await request(app).get("/readings?region=99&epoch=1");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("GET /readings returns multiple readings across devices for same region+epoch", async () => {
+    repo.upsertDevice(db, {
+      address: "DEV2",
+      owner: "OWNER2",
+      device_type: "weather",
+      lat: 30,
+      lon: 40,
+      registered_at: 2000,
+    });
+    repo.insertReading(db, {
+      device_address: "DEV2",
+      device_type: "weather",
+      region_code: 42,
+      epoch: 7,
+      value: 3000,
+      accepted: 1,
+      ledger: 102,
+      closed_at: "2026-01-01T00:02:00Z",
+      tx_hash: "TX3",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    // Results should be ordered by ledger DESC — DEV2 (ledger 102) first
+    expect(res.body[0].device_address).toBe("DEV2");
+    expect(res.body[1].device_address).toBe("DEV1");
+  });
+
+  it("GET /readings 400s when region param is missing", async () => {
+    const res = await request(app).get("/readings?epoch=7");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when epoch param is missing", async () => {
+    const res = await request(app).get("/readings?region=42");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when region param is not a number", async () => {
+    const res = await request(app).get("/readings?region=abc&epoch=7");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when epoch param is not a number", async () => {
+    const res = await request(app).get("/readings?region=42&epoch=not-a-number");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings 400s when both params are missing", async () => {
+    const res = await request(app).get("/readings");
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty("error");
+  });
+
+  it("GET /readings does not return readings from a different epoch", async () => {
+    repo.insertReading(db, {
+      device_address: "DEV1",
+      device_type: "weather",
+      region_code: 42,
+      epoch: 8, // different epoch
+      value: 9999,
+      accepted: 1,
+      ledger: 200,
+      closed_at: "2026-02-01T00:00:00Z",
+      tx_hash: "TX_EPOCH8",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body.every((r: { epoch: number }) => r.epoch === 7)).toBe(true);
+  });
+
+  it("GET /readings does not return readings from a different region", async () => {
+    repo.insertReading(db, {
+      device_address: "DEV1",
+      device_type: "weather",
+      region_code: 99, // different region
+      epoch: 7,
+      value: 8888,
+      accepted: 1,
+      ledger: 201,
+      closed_at: "2026-02-01T00:01:00Z",
+      tx_hash: "TX_REGION99",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    expect(res.body.every((r: { region_code: number }) => r.region_code === 42)).toBe(true);
+  });
+
+  it("GET /readings includes rejected (accepted=0) readings in results", async () => {
+    // Unlike regionAverage which only includes accepted=1, the raw listing
+    // returns all readings regardless of accepted status.
+    repo.insertReading(db, {
+      device_address: "DEV1",
+      device_type: "weather",
+      region_code: 42,
+      epoch: 7,
+      value: 100,
+      accepted: 0, // rejected reading
+      ledger: 103,
+      closed_at: "2026-01-01T00:03:00Z",
+      tx_hash: "TX_REJECTED",
+    });
+    const res = await request(app).get("/readings?region=42&epoch=7");
+    expect(res.status).toBe(200);
+    // Should include both the accepted and the rejected reading
+    expect(res.body.length).toBeGreaterThanOrEqual(2);
+    const accepted = res.body.filter((r: { accepted: number }) => r.accepted === 1);
+    const rejected = res.body.filter((r: { accepted: number }) => r.accepted === 0);
+    expect(accepted.length).toBeGreaterThanOrEqual(1);
+    expect(rejected.length).toBe(1);
+  });
+
+  // ── Error-handling middleware ──────────────────────────────────────────────
+
+  it("error-handling middleware returns JSON on unhandled route errors", async () => {
+    // Temporarily mount a route that throws to verify the error handler
+    // catches it and returns a consistent JSON shape instead of Express's
+    // default HTML error page.
+    const { createApp: makeApp } = await import("../src/api/app.js");
+    const errorApp = makeApp(db);
+    errorApp.get("/boom", (_req, _res, next) => {
+      next(new Error("test explosion"));
+    });
+    const res = await request(errorApp).get("/boom");
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty("error");
+    expect(typeof res.body.error).toBe("string");
+  });
 });
