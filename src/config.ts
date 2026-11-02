@@ -24,7 +24,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     dbPath: env.DB_PATH ?? "./data/driftmesh.sqlite",
     pollIntervalMs: Number(env.POLL_INTERVAL_MS ?? 5000),
-    port: Number(env.PORT ?? 3001),
+    // PORT is the common convention (Render, Railway); SERVER_PORT is
+    // Bot-Hosting.net's — support whichever the host injects.
+    port: Number(env.PORT ?? env.SERVER_PORT ?? 3001),
   };
 }
 

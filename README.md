@@ -51,12 +51,28 @@ npm run build && npm start   # production build
 
 ## Deploying
 
-Three hosting options are set up below. Free-tier card/signup policies
+Four hosting options are set up below. Free-tier card/signup policies
 on these platforms change often and even contradict their own docs in
 practice — each option here was checked live, not assumed from
 memory, as of November 2026; re-verify before relying on any of them.
 
-### Back4App Containers (currently the reliable no-card option)
+### Bot-Hosting.net (currently the reliable no-card, permanent-URL option)
+
+Despite the name, [Bot-Hosting.net](https://bot-hosting.net) hosts plain
+Node.js APIs and workers, not just Discord bots — verified live: account
+creation needs no card anywhere in the flow (GitHub OAuth sign-in only),
+and deploying from a public GitHub repo (`DriftMeshh/indexer`, `main`)
+picked up this repo's `Dockerfile` automatically. Free plan: 256MB RAM,
+25% CPU, 512MB storage, one deployment, **no spin-down** — but the free
+plan does need manual renewal from its dashboard every 4 days to keep
+the resources allocated (a reminder shows up before it lapses); Starter+
+at $2.09/mo removes that if it becomes a hassle. One thing specific to
+this host: it injects the app's port as `SERVER_PORT`, not the more
+common `PORT` — `config.ts` reads `env.PORT ?? env.SERVER_PORT` so it
+works on either. Add the same env vars `render.yaml` lists below under
+the deployment's **Environment** tab, then **Start** it.
+
+### Back4App Containers (reliable no-card option, but temporary URL on the free plan)
 
 `Dockerfile` builds this service for [Back4App Containers](https://back4app.com/pricing/container-as-a-service)
 (or any other Docker-based host) — verified locally end-to-end: `docker
@@ -66,7 +82,10 @@ and `/devices` responses. Back4App's free tier is explicitly "no credit
 card required" in their own FAQ (0.25 CPU / 256MB RAM / 100GB transfer,
 deploy from GitHub, no spin-down). After connecting the repo, add the
 same env vars `render.yaml` lists below as the container's environment
-variables in Back4App's dashboard.
+variables in Back4App's dashboard. **Caveat found only at actual deploy
+time, not in their docs:** the free plan's URL is temporary, expiring 60
+minutes after each deploy — only their paid Starter plan ($5/mo) gets a
+permanent URL, which is why Bot-Hosting.net above is listed first.
 
 ### Railway (no card required, but new signups are currently paused)
 
