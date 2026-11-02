@@ -29,6 +29,10 @@ export function readingsRouter(db: Db): Router {
     const region = Number(req.query.region);
     const epoch = Number(req.query.epoch);
 
+    // Number(undefined) === NaN and Number("abc") === NaN, both caught by
+    // !isFinite. Number("") === 0 which IS finite — that's intentional:
+    // region=0 and epoch=0 are valid filter values (a region code or epoch
+    // of zero is unusual but not impossible in the contract's domain).
     if (!Number.isFinite(region) || !Number.isFinite(epoch)) {
       const missing: string[] = [];
       if (!Number.isFinite(region)) missing.push("?region=");
