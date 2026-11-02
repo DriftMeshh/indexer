@@ -4,6 +4,9 @@
   "private": true,
   "description": "Backend for DriftMesh: indexes device/reading/claim/subscription events from the Soroban contracts and serves them over a REST API.",
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "workspaces": [
     "bindings/*"
   ],

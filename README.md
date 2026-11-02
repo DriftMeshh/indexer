@@ -51,12 +51,38 @@ npm run build && npm start   # production build
 
 ## Deploying
 
+### Railway (recommended — no card required)
+
+`railway.json` configures the build/start/health-check for [Railway](https://railway.com):
+connect this repo (Railway auto-detects Node via Nixpacks; `engines.node`
+in `package.json` pins it to 22, avoiding the `better-sqlite3`
+prebuilt-binary ABI mismatch noted in `.github/workflows/ci.yml`), then
+add the same env vars `render.yaml` lists below (Railway's config-as-code
+doesn't set variable values itself, so this is a one-time manual step in
+its dashboard — same five minutes as adding any Vercel env var). Railway's
+free trial needs **no credit card to deploy** (confirmed directly on
+[Railway's pricing page](https://railway.com/pricing)): $5 of usage
+credit over a 30-day trial, which a service this light (0.5GB RAM) should
+comfortably stay within. Unlike Render's free tier, a Railway service
+doesn't spin down from inbound-traffic idleness — it only sleeps if you
+explicitly enable its opt-in "Serverless" setting, which **should stay
+off** for this service, since the poller's continuous outbound RPC calls
+mean it was never going to qualify as idle anyway, and sleeping would stop
+the poller entirely. Past the 30-day/$5 window, continuing requires either
+adding a card (~$1/month minimum usage) or letting the service pause.
+
+### Render (alternative — some accounts are asked to verify a card)
+
 `render.yaml` is a ready-to-use [Render](https://render.com) blueprint
 — connect this repo on Render and it deploys as a free web service
 with the already-deployed testnet contract IDs pre-filled (they're
 public on-chain identifiers, not secrets). `GET /health` is wired up
 as the health check. Render injects its own `PORT`; `config.ts`
-already reads `env.PORT`, so no change is needed there.
+already reads `env.PORT`, so no change is needed there. Render's own
+docs describe the free tier as not requiring a card, but some accounts
+are shown a card-verification step (a $1 temporary authorization, not a
+charge) during onboarding regardless — if that happens, Railway above
+is the no-card fallback.
 
 **One real caveat with the free plan — and it's more frequent than it
 sounds**: per [Render's own docs](https://render.com/docs/free), a

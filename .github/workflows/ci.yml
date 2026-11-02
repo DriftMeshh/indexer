@@ -11,9 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned, not "lts/*": better-sqlite3@11.10.0 only ships a prebuilt
+      # binary up to Node 22's ABI, so a newer "latest LTS" forces a
+      # from-source node-gyp build that fails against that Node version's
+      # V8 headers (PropertyCallbackInfo lost its .This() method). Hit
+      # this for real when GitHub's runner moved lts/* to Node 26.
       - uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
+          node-version: "22"
           cache: npm
 
       - run: npm install
