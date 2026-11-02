@@ -57,16 +57,21 @@ public on-chain identifiers, not secrets). `GET /health` is wired up
 as the health check. Render injects its own `PORT`; `config.ts`
 already reads `env.PORT`, so no change is needed there.
 
-**One real caveat with the free plan**: it has no persistent disk, so
-`DB_PATH`'s SQLite file — and with it, the poller's stored cursor —
-resets on every redeploy. Combined with the "cursor seeding, not
-backfill" limitation below, that means a freshly (re)deployed instance
-starts from the *current* ledger, not from where it left off, so
-`GET /devices` will come back empty until new on-chain activity
-happens after that deploy. For a demo, the simplest fix is running
-`device-sdk`'s `npm run simulate` once against the redeployed instance
-to generate fresh events — or use Render's paid Starter plan with a
-persistent disk if you need state to survive redeploys.
+**One real caveat with the free plan — and it's more frequent than it
+sounds**: per [Render's own docs](https://render.com/docs/free), a
+free web service spins down after just 15 minutes with no inbound
+traffic, and its filesystem resets on every spin-down, not only on a
+redeploy. So `DB_PATH`'s SQLite file — and with it, the poller's
+stored cursor — is lost any time the service has been idle for 15+
+minutes, which for a lightly-visited demo could be most of the time.
+Combined with the "cursor seeding, not backfill" limitation below,
+that means a freshly spun-up instance starts from the *current*
+ledger, not from where it left off, so `GET /devices` will come back
+empty until new on-chain activity happens after that spin-up. For a
+demo, the simplest fix is running `device-sdk`'s `npm run simulate`
+shortly before anyone looks at the live site — or use Render's paid
+Starter plan (no spin-down) with a persistent disk if you need state
+to survive both spin-downs and redeploys.
 
 ## Known limitations
 
