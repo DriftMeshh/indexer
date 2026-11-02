@@ -88,6 +88,43 @@ describe("repository", () => {
     expect(repo.getCursor(db, "C2")).toBe(900);
   });
 
+  it("listReadingsForRegion returns all readings for a region+epoch ordered by ledger DESC", () => {
+    const base = {
+      device_type: "weather",
+      region_code: 5,
+      epoch: 3,
+      accepted: 1,
+      closed_at: "2026-01-01T00:00:00Z",
+    };
+    repo.insertReading(db, { ...base, device_address: "DEV_A", value: 100, ledger: 10, tx_hash: "H1" });
+    repo.insertReading(db, { ...base, device_address: "DEV_B", value: 200, ledger: 20, tx_hash: "H2" });
+    repo.insertReading(db, { ...base, device_address: "DEV_C", value: 300, ledger: 30, tx_hash: "H3" });
+
+    const rows = repo.listReadingsForRegion(db, 5, 3);
+    expect(rows).toHaveLength(3);
+    // Ordered ledger DESC: 30, 20, 10
+    expect(rows[0].ledger).toBe(30);
+    expect(rows[1].ledger).toBe(20);
+    expect(rows[2].ledger).toBe(10);
+  });
+
+  it("listReadingsForRegion includes accepted=0 rows (unlike regionAverage)", () => {
+    const base = {
+      device_address: "DEV1",
+      device_type: "weather",
+      region_code: 7,
+      epoch: 1,
+      ledger: 50,
+      closed_at: "2026-01-01T00:00:00Z",
+    };
+    repo.insertReading(db, { ...base, value: 100, accepted: 1, tx_hash: "HA" });
+    repo.insertReading(db, { ...base, value: 999, accepted: 0, tx_hash: "HB", ledger: 51 });
+
+    const rows = repo.listReadingsForRegion(db, 7, 1);
+    expect(rows).toHaveLength(2);
+    expect(rows.some((r) => r.accepted === 0)).toBe(true);
+  });
+
   it("subscriptions only move forward (a stale/out-of-order event can't roll back expiry)", () => {
     repo.upsertSubscription(db, {
       subscriber: "SUB1",
