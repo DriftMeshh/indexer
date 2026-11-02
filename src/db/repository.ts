@@ -93,6 +93,31 @@ export function regionAverage(db: Db, regionCode: number, epoch: number): number
   return row.avg;
 }
 
+/**
+ * Returns all individual readings for a given region code and epoch,
+ * ordered by ledger descending (most recent first). Used by GET /readings?region=&epoch=.
+ *
+ * Does NOT filter by `accepted` — returns both accepted and rejected readings
+ * so the consumer can decide which subset matters to them. The existing
+ * regionAverage only counts accepted=1 rows because an average of rejected
+ * readings is meaningless; raw listing has no such restriction.
+ *
+ * Ordering by ledger DESC matches listReadingsForDevice, keeping the
+ * collection ordering consistent across both "per device" and "per region"
+ * reading queries.
+ */
+export function listReadingsForRegion(
+  db: Db,
+  regionCode: number,
+  epoch: number,
+): ReadingRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM readings WHERE region_code = ? AND epoch = ? ORDER BY ledger DESC`,
+    )
+    .all(regionCode, epoch) as ReadingRow[];
+}
+
 export function insertClaim(db: Db, row: Omit<ClaimRow, "id">): void {
   db.prepare(
     `INSERT OR IGNORE INTO claims (device_address, epoch, payout, ledger, closed_at, tx_hash)

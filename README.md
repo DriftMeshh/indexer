@@ -11,6 +11,7 @@ Stellar RPC (getEvents) ──poll──▶ parser ──▶ SQLite ──▶ Ex
                                                      /devices, /devices/:a/readings,
                                                      /devices/:a/claims,
                                                      /regions/:code/average,
+                                                     /readings?region=&epoch=,
                                                      /subscriptions/:a
 ```
 
@@ -43,7 +44,7 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 25 tests: parser, repository, poller (RPC mocked), API
+npm test                # 38 tests: parser, repository, poller (RPC mocked), API
 npm run typecheck
 npm run build && npm start   # production build
 ```
@@ -93,6 +94,10 @@ persistent disk if you need state to survive redeploys.
   Postgres for multi-instance/production use is a drop-in-shaped change
   (the repository layer is the only place that touches SQL) but hasn't
   been done.
+- **`GET /readings` has no pagination.** Returns all readings for a
+  region+epoch in one response. For a high-volume deployment this could
+  become large; adding a `limit`/`offset` query param would follow the
+  same pattern as `GET /devices/:address/readings`.
 - **Polling, not a subscription.** `pollOnce` runs on a fixed interval
   (`POLL_INTERVAL_MS`). Soroban RPC doesn't currently offer a push/
   websocket event stream, so polling is the standard approach — but the
@@ -101,7 +106,6 @@ persistent disk if you need state to survive redeploys.
 ## Suggested Stellar Wave issues
 
 **Trivial**
-- Add a `GET /readings?region=&epoch=` endpoint listing raw readings (currently only per-device or aggregate-average views exist)
 - Add request logging / basic error-handling middleware to `api/app.ts`
 
 **Medium**
