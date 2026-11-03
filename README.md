@@ -60,17 +60,33 @@ memory, as of November 2026; re-verify before relying on any of them.
 
 Despite the name, [Bot-Hosting.net](https://bot-hosting.net) hosts plain
 Node.js APIs and workers, not just Discord bots — verified live: account
-creation needs no card anywhere in the flow (GitHub OAuth sign-in only),
-and deploying from a public GitHub repo (`DriftMeshh/indexer`, `main`)
-picked up this repo's `Dockerfile` automatically. Free plan: 256MB RAM,
-25% CPU, 512MB storage, one deployment, **no spin-down** — but the free
-plan does need manual renewal from its dashboard every 4 days to keep
-the resources allocated (a reminder shows up before it lapses); Starter+
-at $2.09/mo removes that if it becomes a hassle. One thing specific to
-this host: it injects the app's port as `SERVER_PORT`, not the more
-common `PORT` — `config.ts` reads `env.PORT ?? env.SERVER_PORT` so it
-works on either. Add the same env vars `render.yaml` lists below under
-the deployment's **Environment** tab, then **Start** it.
+creation needs no card anywhere in the flow (GitHub OAuth sign-in only).
+Free plan: 256MB RAM, 25% CPU, 512MB storage, **one deployment**,
+no spin-down — but the free plan does need manual renewal from its
+dashboard every 4 days to keep the resources allocated (a reminder shows
+up before it lapses); Starter+ at $2.09/mo removes both that and the
+one-deployment cap. **This repo's `Dockerfile` is not actually used** —
+despite Node.js deployments showing a "pre-installed in Docker image"
+message, it pulls its own generic `ghcr.io/parkervcp/yolks:nodejs_22`
+runtime regardless, confirmed from the live deploy log; the Dockerfile
+is kept for other Docker-based hosts (e.g. Back4App below) and for
+local verification. Two things to set manually in the deployment's
+**Settings → Startup** tab, since its defaults don't fit a TypeScript
+project: the entry file (`dist/index.js`, not its default `index.js`),
+and the start command, overridden to add a build step before starting —
+`cd /home/container && if [ -f package.json ]; then npm install
+--no-fund --no-audit && npm run build; fi && exec node ${STARTUP_FILE}`.
+One thing specific to this host: it injects the app's port as
+`SERVER_PORT`, not the more common `PORT` — `config.ts` reads `env.PORT
+?? env.SERVER_PORT` so it works on either. Add the same env vars
+`render.yaml` lists below under the deployment's **Environment** tab,
+then **Start** it.
+
+**device-sdk runs here too**, bundled into this same deployment rather
+than a separate one, since the free plan's cap is one deployment per
+account — see [`device-sdk`'s README](https://github.com/DriftMeshh/device-sdk#deploying)
+for the exact Start command that launches both. This is what keeps the
+live demo showing moving data instead of a static snapshot.
 
 ### Back4App Containers (reliable no-card option, but temporary URL on the free plan)
 
