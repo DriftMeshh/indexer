@@ -111,6 +111,8 @@ export function listDevices(
   offset = 0,
 ): PaginatedResult<DeviceRow> {
   const clampedLimit = Math.min(limit, MAX_LIMIT);
+  // COUNT(*) on a table without a WHERE clause is O(1) in SQLite because
+  // the engine reads the row count directly from the database file header.
   const total = (
     db.prepare(`SELECT COUNT(*) AS n FROM devices`).get() as { n: number }
   ).n;
