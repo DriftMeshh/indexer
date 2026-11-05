@@ -1,5 +1,10 @@
 import type { Db } from "./client.js";
 
+// Pagination defaults — exported so route handlers and tests can reference
+// the same values rather than hard-coding magic numbers in multiple places.
+export const DEFAULT_LIMIT = 50;
+export const MAX_LIMIT = 500;
+
 export interface DeviceRow {
   address: string;
   owner: string | null;
