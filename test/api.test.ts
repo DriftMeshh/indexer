@@ -335,6 +335,20 @@ describe("API", () => {
       expect(overlap).toHaveLength(0);
     });
 
+    it("three pages cover the full dataset without gaps or duplicates", async () => {
+      // 6 devices, 3 pages of 2 each — union should equal the full 6
+      const page1 = await request(app).get("/devices?limit=2&offset=0");
+      const page2 = await request(app).get("/devices?limit=2&offset=2");
+      const page3 = await request(app).get("/devices?limit=2&offset=4");
+      const allAddrs = [
+        ...page1.body.data,
+        ...page2.body.data,
+        ...page3.body.data,
+      ].map((d: { address: string }) => d.address);
+      // All 6 devices present, no duplicates
+      expect(new Set(allAddrs).size).toBe(6);
+    });
+
     it("offset beyond total returns empty data array", async () => {
       const res = await request(app).get("/devices?offset=9999");
       expect(res.status).toBe(200);
