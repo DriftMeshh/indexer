@@ -451,5 +451,38 @@ describe("API", () => {
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty("error");
     });
+
+    it("returns only readings belonging to the specified device", async () => {
+      // Seed a second device with its own reading
+      repo.upsertDevice(db, {
+        address: "DEV_OTHER",
+        owner: "OWNER_OTHER",
+        device_type: "weather",
+        lat: 99,
+        lon: 99,
+        registered_at: 9000,
+      });
+      repo.insertReading(db, {
+        device_address: "DEV_OTHER",
+        device_type: "weather",
+        region_code: 1,
+        epoch: 1,
+        value: 9999,
+        accepted: 1,
+        ledger: 999,
+        closed_at: "2026-06-01T00:00:00Z",
+        tx_hash: "TX_OTHER_DEVICE",
+      });
+      const res = await request(app).get("/devices/DEV1/readings?limit=100");
+      expect(res.status).toBe(200);
+      // All returned readings must belong to DEV1, not DEV_OTHER
+      expect(
+        res.body.data.every(
+          (r: { device_address: string }) => r.device_address === "DEV1",
+        ),
+      ).toBe(true);
+      // total must not include DEV_OTHER's reading
+      expect(res.body.total).toBe(6);
+    });
   });
 });
