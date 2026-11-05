@@ -473,6 +473,18 @@ describe("API", () => {
       expect(overlap).toHaveLength(0);
     });
 
+    it("three pages cover all readings without gaps or duplicates", async () => {
+      const page1 = await request(app).get("/devices/DEV1/readings?limit=2&offset=0");
+      const page2 = await request(app).get("/devices/DEV1/readings?limit=2&offset=2");
+      const page3 = await request(app).get("/devices/DEV1/readings?limit=2&offset=4");
+      const allIds = [
+        ...page1.body.data,
+        ...page2.body.data,
+        ...page3.body.data,
+      ].map((r: { id: number }) => r.id);
+      expect(new Set(allIds).size).toBe(6);
+    });
+
     it("offset beyond total returns empty data array", async () => {
       const res = await request(app).get("/devices/DEV1/readings?offset=9999");
       expect(res.status).toBe(200);
