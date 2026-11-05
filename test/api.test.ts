@@ -282,5 +282,12 @@ describe("API", () => {
       expect(res.body).toHaveProperty("limit");
       expect(res.body).toHaveProperty("offset");
     });
+
+    it("total reflects full count regardless of limit", async () => {
+      const res = await request(app).get("/devices?limit=2");
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(6);
+      expect(res.body.data).toHaveLength(2);
+    });
   });
 });
