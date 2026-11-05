@@ -109,6 +109,14 @@ describe("API", () => {
     expect(res.body).toMatchObject({ active: false });
   });
 
+  it("GET /devices/:address/readings returns 200 with empty paginated envelope for unknown device", async () => {
+    // An unknown device has 0 readings — valid response is an empty page, not 404
+    const res = await request(app).get("/devices/UNKNOWN_ADDR/readings");
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
   it("GET /subscriptions/:address reports active for a non-expired subscription", async () => {
     repo.upsertSubscription(db, {
       subscriber: "SUB1",
