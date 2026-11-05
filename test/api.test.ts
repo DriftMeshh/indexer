@@ -312,6 +312,15 @@ describe("API", () => {
       expect(res.body.limit).toBe(3);
     });
 
+    it("response is ordered by registered_at descending", async () => {
+      // With a full first page, the first item must be the most-recently
+      // registered device (highest registered_at). DEV6 was seeded with
+      // registered_at = 1006, the highest in this test corpus.
+      const res = await request(app).get("/devices?limit=6");
+      expect(res.status).toBe(200);
+      expect(res.body.data[0].address).toBe("DEV6");
+    });
+
     it("offset skips the correct number of rows", async () => {
       // Get first page
       const page1 = await request(app).get("/devices?limit=2&offset=0");
