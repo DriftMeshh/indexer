@@ -255,4 +255,32 @@ describe("API", () => {
     expect(res.body).toHaveProperty("error");
     expect(typeof res.body.error).toBe("string");
   });
+
+  // ── Pagination: GET /devices ───────────────────────────────────────────────
+
+  describe("GET /devices pagination", () => {
+    beforeEach(() => {
+      // Seed 5 more devices (DEV1 already exists from the outer beforeEach,
+      // total will be 6 devices)
+      for (let i = 2; i <= 6; i++) {
+        repo.upsertDevice(db, {
+          address: `DEV${i}`,
+          owner: `OWNER${i}`,
+          device_type: "weather",
+          lat: i * 10,
+          lon: i * 10,
+          registered_at: 1000 + i,
+        });
+      }
+    });
+
+    it("returns a paginated envelope with data/total/limit/offset fields", async () => {
+      const res = await request(app).get("/devices");
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("data");
+      expect(res.body).toHaveProperty("total");
+      expect(res.body).toHaveProperty("limit");
+      expect(res.body).toHaveProperty("offset");
+    });
+  });
 });
