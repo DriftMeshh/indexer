@@ -95,8 +95,19 @@ export function setDeviceActive(db: Db, address: string, active: boolean): void 
   db.prepare(`UPDATE devices SET active = ? WHERE address = ?`).run(active ? 1 : 0, address);
 }
 
-export function listDevices(db: Db): DeviceRow[] {
-  return db.prepare(`SELECT * FROM devices ORDER BY registered_at DESC`).all() as DeviceRow[];
+export function listDevices(
+  db: Db,
+  limit = DEFAULT_LIMIT,
+  offset = 0,
+): PaginatedResult<DeviceRow> {
+  const clampedLimit = Math.min(limit, MAX_LIMIT);
+  const total = (
+    db.prepare(`SELECT COUNT(*) AS n FROM devices`).get() as { n: number }
+  ).n;
+  const data = db
+    .prepare(`SELECT * FROM devices ORDER BY registered_at DESC LIMIT ? OFFSET ?`)
+    .all(clampedLimit, offset) as DeviceRow[];
+  return { data, total, limit: clampedLimit, offset };
 }
 
 export function getDevice(db: Db, address: string): DeviceRow | undefined {
