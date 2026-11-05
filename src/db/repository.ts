@@ -143,6 +143,11 @@ export function listReadingsForDevice(
   offset = 0,
 ): PaginatedResult<ReadingRow> {
   const clampedLimit = Math.min(limit, MAX_LIMIT);
+  // Unlike the COUNT(*) in listDevices, this COUNT has a WHERE clause so it
+  // cannot use the O(1) header shortcut. It requires an index scan on
+  // device_address. A future optimisation is to add an index on
+  // (device_address, ledger DESC) which would make both this COUNT and the
+  // main SELECT use the same index efficiently.
   const total = (
     db
       .prepare(`SELECT COUNT(*) AS n FROM readings WHERE device_address = ?`)
