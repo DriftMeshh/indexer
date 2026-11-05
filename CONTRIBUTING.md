@@ -14,7 +14,7 @@ issue complexity here follows Wave's own point system.
    ```bash
    npm install
    npm run build --workspaces --if-present   # builds bindings/device-registry
-   npm test          # 38 tests should pass
+   npm test          # 60+ tests should pass (38 original + new pagination tests)
    npm run typecheck
    ```
 
