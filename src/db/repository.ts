@@ -41,6 +41,9 @@ export const MAX_LIMIT = 500;
  *   total  — full count of matching rows across all pages (before LIMIT/OFFSET)
  *   limit  — the effective LIMIT used for this query (may be clamped to MAX_LIMIT)
  *   offset — the OFFSET used for this query (mirrors the request param)
+ *
+ * Computing the total number of pages from a response:
+ *   Math.ceil(result.total / result.limit)   // watch for limit=0 → Infinity
  */
 export interface PaginatedResult<T> {
   data: T[];
