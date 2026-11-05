@@ -289,5 +289,18 @@ describe("API", () => {
       expect(res.body.total).toBe(6);
       expect(res.body.data).toHaveLength(2);
     });
+
+    it("applies default limit of 50 when no limit is supplied", async () => {
+      const res = await request(app).get("/devices");
+      expect(res.status).toBe(200);
+      expect(res.body.limit).toBe(50);
+    });
+
+    it("explicit limit is respected", async () => {
+      const res = await request(app).get("/devices?limit=3");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(3);
+      expect(res.body.limit).toBe(3);
+    });
   });
 });
