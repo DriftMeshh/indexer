@@ -12,6 +12,16 @@ import { DEFAULT_LIMIT, MAX_LIMIT } from "../../db/repository.js";
  *
  * Negative values are returned as-is; the caller checks for < 0 to emit
  * a param-specific error message.
+ *
+ * Examples:
+ *   parseNonNegativeInt(undefined)  → null     (absent)
+ *   parseNonNegativeInt("")         → null     (empty string treated as absent)
+ *   parseNonNegativeInt("abc")      → NaN      (non-numeric)
+ *   parseNonNegativeInt("Infinity") → NaN      (non-finite)
+ *   parseNonNegativeInt("-1")       → -1       (caller's job to 400)
+ *   parseNonNegativeInt("0")        → 0        (valid)
+ *   parseNonNegativeInt("50")       → 50       (valid)
+ *   parseNonNegativeInt("1.9")      → 1        (truncated)
  */
 function parseNonNegativeInt(raw: unknown): number | null {
   if (raw === undefined || raw === null || raw === "") return null;
