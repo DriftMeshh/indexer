@@ -65,8 +65,12 @@ describe("API", () => {
   it("GET /devices/:address/readings returns that device's readings", async () => {
     const res = await request(app).get("/devices/DEV1/readings");
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({ value: 2500, region_code: 42 });
+    // Response is now a paginated envelope
+    expect(res.body).toHaveProperty("data");
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toMatchObject({ value: 2500, region_code: 42 });
+    expect(res.body.total).toBe(1);
+    expect(res.body.offset).toBe(0);
   });
 
   it("GET /devices/:address/claims returns that device's claims", async () => {
