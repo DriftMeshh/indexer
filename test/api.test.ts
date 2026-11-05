@@ -401,6 +401,15 @@ describe("API", () => {
       expect(res.body).toHaveProperty("offset");
     });
 
+    it("offset=0 is equivalent to omitting offset", async () => {
+      const withZero    = await request(app).get("/devices/DEV1/readings?offset=0");
+      const withDefault = await request(app).get("/devices/DEV1/readings");
+      expect(withZero.status).toBe(200);
+      expect(withDefault.status).toBe(200);
+      expect(withZero.body.data).toEqual(withDefault.body.data);
+      expect(withZero.body.offset).toBe(0);
+      expect(withDefault.body.offset).toBe(0);
+    });
     it("total reflects full count regardless of limit", async () => {
       const res = await request(app).get("/devices/DEV1/readings?limit=2");
       expect(res.status).toBe(200);
