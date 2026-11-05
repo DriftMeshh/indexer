@@ -342,6 +342,14 @@ describe("API", () => {
       expect(res.body).toHaveProperty("error");
     });
 
+    it("limit=0 returns empty data with correct total", async () => {
+      const res = await request(app).get("/devices?limit=0");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.total).toBe(6);
+      expect(res.body.limit).toBe(0);
+    });
+
     it("400s when offset is negative", async () => {
       const res = await request(app).get("/devices?offset=-5");
       expect(res.status).toBe(400);
