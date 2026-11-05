@@ -329,5 +329,17 @@ describe("API", () => {
       expect(res.status).toBe(200);
       expect(res.body.limit).toBe(500);
     });
+
+    it("400s when limit is negative", async () => {
+      const res = await request(app).get("/devices?limit=-1");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
+
+    it("400s when limit is non-numeric", async () => {
+      const res = await request(app).get("/devices?limit=abc");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
   });
 });
