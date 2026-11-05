@@ -46,6 +46,18 @@ describe("API", () => {
     expect(res.body).toEqual({ ok: true });
   });
 
+  it("GET /devices returns Content-Type application/json", async () => {
+    const res = await request(app).get("/devices");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+  });
+
+  it("GET /devices/:address/readings returns Content-Type application/json", async () => {
+    const res = await request(app).get("/devices/DEV1/readings");
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+  });
+
   it("GET /devices lists registered devices", async () => {
     const res = await request(app).get("/devices");
     expect(res.status).toBe(200);
