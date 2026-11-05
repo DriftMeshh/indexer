@@ -99,6 +99,14 @@ describe("API", () => {
     expect(res.body.limit).toBe(1);
   });
 
+  it("GET /devices limit=1 returns exactly one device", async () => {
+    const res = await request(app).get("/devices?limit=1");
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.limit).toBe(1);
+    expect(res.body.total).toBe(1); // only 1 device in outer beforeEach
+  });
+
   it("GET /devices/:address/readings returns that device's readings", async () => {
     const res = await request(app).get("/devices/DEV1/readings");
     expect(res.status).toBe(200);
