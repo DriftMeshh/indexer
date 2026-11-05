@@ -1,7 +1,17 @@
 import type { Db } from "./client.js";
 
-// Pagination defaults — exported so route handlers and tests can reference
-// the same values rather than hard-coding magic numbers in multiple places.
+/**
+ * Pagination constants.
+ *
+ * DEFAULT_LIMIT (50): a reasonable page size that keeps responses fast for
+ * typical fleet sizes without requiring a client to always supply a limit.
+ *
+ * MAX_LIMIT (500): an upper bound that prevents a single request from
+ * returning an unbounded result set. Chosen to be large enough for legitimate
+ * bulk-export use-cases while still protecting the database from runaway
+ * queries. Requests that exceed this are clamped to 500 rather than rejected,
+ * so existing clients that pass a very large limit won't suddenly break.
+ */
 export const DEFAULT_LIMIT = 50;
 export const MAX_LIMIT = 500;
 
