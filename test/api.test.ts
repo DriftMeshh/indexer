@@ -316,5 +316,18 @@ describe("API", () => {
       const overlap = page1Addrs.filter((a: string) => page2Addrs.includes(a));
       expect(overlap).toHaveLength(0);
     });
+
+    it("offset beyond total returns empty data array", async () => {
+      const res = await request(app).get("/devices?offset=9999");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.total).toBe(6);
+    });
+
+    it("clamps limit to MAX_LIMIT (500)", async () => {
+      const res = await request(app).get("/devices?limit=99999");
+      expect(res.status).toBe(200);
+      expect(res.body.limit).toBe(500);
+    });
   });
 });
