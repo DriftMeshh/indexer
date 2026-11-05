@@ -421,5 +421,35 @@ describe("API", () => {
       expect(res.body.data).toHaveLength(0);
       expect(res.body.total).toBe(6);
     });
+
+    it("clamps limit to MAX_LIMIT (500)", async () => {
+      const res = await request(app).get("/devices/DEV1/readings?limit=99999");
+      expect(res.status).toBe(200);
+      expect(res.body.limit).toBe(500);
+    });
+
+    it("400s when limit is negative", async () => {
+      const res = await request(app).get("/devices/DEV1/readings?limit=-1");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
+
+    it("400s when limit is non-numeric", async () => {
+      const res = await request(app).get("/devices/DEV1/readings?limit=bad");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
+
+    it("400s when offset is negative", async () => {
+      const res = await request(app).get("/devices/DEV1/readings?offset=-3");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
+
+    it("400s when offset is non-numeric", async () => {
+      const res = await request(app).get("/devices/DEV1/readings?offset=bad");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
   });
 });
