@@ -23,8 +23,41 @@ function parseNonNegativeInt(raw: unknown): number | null {
 export function devicesRouter(db: Db): Router {
   const router = Router();
 
-  router.get("/", (_req, res) => {
-    res.json(repo.listDevices(db));
+  /**
+   * GET /devices
+   *
+   * Lists all registered devices, ordered by registration date (newest first).
+   *
+   * Query params:
+   *   limit  — number of records to return (default: 50, max: 500)
+   *   offset — number of records to skip    (default: 0)
+   *
+   * Response shape:
+   *   { data: DeviceRow[], total: number, limit: number, offset: number }
+   *
+   * Error responses:
+   *   400 — limit or offset is present but not a valid non-negative integer
+   */
+  router.get("/", (req, res) => {
+    const rawLimit = parseNonNegativeInt(req.query.limit);
+    const rawOffset = parseNonNegativeInt(req.query.offset);
+
+    // null means the param was absent — fall back to the sensible defaults.
+    const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
+    const offset = rawOffset === null ? 0 : rawOffset;
+
+    if (!Number.isFinite(limit) || limit < 0) {
+      res
+        .status(400)
+        .json({ error: `"limit" must be a non-negative integer (max ${MAX_LIMIT})` });
+      return;
+    }
+    if (!Number.isFinite(offset) || offset < 0) {
+      res.status(400).json({ error: '"offset" must be a non-negative integer' });
+      return;
+    }
+
+    res.json(repo.listDevices(db, limit, offset));
   });
 
   router.get("/:address", (req, res) => {
