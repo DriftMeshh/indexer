@@ -11,6 +11,10 @@ import type { Db } from "./client.js";
  * bulk-export use-cases while still protecting the database from runaway
  * queries. Requests that exceed this are clamped to 500 rather than rejected,
  * so existing clients that pass a very large limit won't suddenly break.
+ *
+ * The values 50 and 500 share a 10x ratio intentionally: any client paging
+ * with the default limit requires exactly 10 pages to consume a MAX_LIMIT
+ * batch, making strategy comparisons easy for consumers.
  */
 export const DEFAULT_LIMIT = 50;
 export const MAX_LIMIT = 500;
