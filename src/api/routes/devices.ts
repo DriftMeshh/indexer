@@ -53,6 +53,8 @@ export function devicesRouter(db: Db): Router {
     const rawOffset = parseNonNegativeInt(req.query.offset);
 
     // null means the param was absent — fall back to the sensible defaults.
+    // NaN means the param was present but not a valid number — 400.
+    // Negative means the param was a valid number but < 0 — 400.
     const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
     const offset = rawOffset === null ? 0 : rawOffset;
 
