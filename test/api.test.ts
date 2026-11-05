@@ -388,6 +388,15 @@ describe("API", () => {
       expect(res.body).toHaveProperty("error");
     });
 
+    it("both limit and offset can be combined correctly", async () => {
+      // Using limit=2 offset=1: should skip 1 (DEV6), return DEV5 and DEV4
+      const res = await request(app).get("/devices?limit=2&offset=1");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+      // First item should be DEV5 (registered_at 1005, second newest)
+      expect(res.body.data[0].address).toBe("DEV5");
+    });
+
     it("400s when offset is non-numeric", async () => {
       const res = await request(app).get("/devices?offset=xyz");
       expect(res.status).toBe(400);
