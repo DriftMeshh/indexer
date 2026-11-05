@@ -27,6 +27,16 @@ function b64(scVal: xdr.ScVal): string {
   return scVal.toXDR("base64");
 }
 
+/** #[contractevent] encodes a struct's non-#[topic] fields as a single
+ * SCV_MAP keyed by field name — matches what the real on-chain events
+ * actually look like now, not a bare value or positional vec. */
+function map(fields: Record<string, xdr.ScVal>): string {
+  const entries = Object.entries(fields).map(
+    ([key, val]) => new xdr.ScMapEntry({ key: nativeToScVal(key, { type: "symbol" }), val }),
+  );
+  return b64(xdr.ScVal.scvMap(entries));
+}
+
 describe("poller", () => {
   let db: Db;
   const device = Keypair.random().publicKey();
@@ -47,14 +57,12 @@ describe("poller", () => {
         b64(nativeToScVal("reading", { type: "symbol" })),
         b64(nativeToScVal(device, { type: "address" })),
       ],
-      value: b64(
-        xdr.ScVal.scvVec([
-          nativeToScVal(42, { type: "u32" }),
-          nativeToScVal(7, { type: "u32" }),
-          nativeToScVal(2500, { type: "i32" }),
-          nativeToScVal(true, { type: "bool" }),
-        ]),
-      ),
+      value: map({
+        region_code: nativeToScVal(42, { type: "u32" }),
+        epoch: nativeToScVal(7, { type: "u32" }),
+        value: nativeToScVal(2500, { type: "i32" }),
+        accepted: nativeToScVal(true, { type: "bool" }),
+      }),
       ledger: 5010,
       ledgerClosedAt: "2026-01-01T00:00:00Z",
       txHash: "TX1",
@@ -109,7 +117,7 @@ describe("poller", () => {
         b64(nativeToScVal("reg_dev", { type: "symbol" })),
         b64(nativeToScVal(device, { type: "address" })),
       ],
-      value: b64(nativeToScVal("weather", { type: "symbol" })),
+      value: map({ device_type: nativeToScVal("weather", { type: "symbol" }) }),
       ledger: 5010,
       ledgerClosedAt: "2026-01-01T00:00:00Z",
       txHash: "TX2",
@@ -139,7 +147,7 @@ describe("poller", () => {
         b64(nativeToScVal("reg_dev", { type: "symbol" })),
         b64(nativeToScVal(device, { type: "address" })),
       ],
-      value: b64(nativeToScVal("weather", { type: "symbol" })),
+      value: map({ device_type: nativeToScVal("weather", { type: "symbol" }) }),
       ledger: 5010,
       ledgerClosedAt: "2026-01-01T00:00:00Z",
       txHash: "TX3",

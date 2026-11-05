@@ -14,8 +14,14 @@ function addressTopic(address: string): string {
   return b64(nativeToScVal(address, { type: "address" }));
 }
 
-function vec(...items: xdr.ScVal[]): string {
-  return b64(xdr.ScVal.scvVec(items));
+/** #[contractevent] encodes a struct's non-#[topic] fields as a single
+ * SCV_MAP keyed by field name — this is what every real event's `value`
+ * actually looks like now, not a bare value or positional vec. */
+function map(fields: Record<string, xdr.ScVal>): string {
+  const entries = Object.entries(fields).map(
+    ([key, val]) => new xdr.ScMapEntry({ key: nativeToScVal(key, { type: "symbol" }), val }),
+  );
+  return b64(xdr.ScVal.scvMap(entries));
 }
 
 function makeRaw(overrides: Partial<RawEvent>): RawEvent {
@@ -37,7 +43,7 @@ describe("parseEvent", () => {
   it("parses a device_registered event", () => {
     const raw = makeRaw({
       topic: [symbolTopic("reg_dev"), addressTopic(device)],
-      value: b64(nativeToScVal("weather", { type: "symbol" })),
+      value: map({ device_type: nativeToScVal("weather", { type: "symbol" }) }),
     });
 
     const parsed = parseEvent(raw);
@@ -54,12 +60,12 @@ describe("parseEvent", () => {
   it("parses an accepted reading event", () => {
     const raw = makeRaw({
       topic: [symbolTopic("reading"), addressTopic(device)],
-      value: vec(
-        nativeToScVal(42, { type: "u32" }),
-        nativeToScVal(7, { type: "u32" }),
-        nativeToScVal(2500, { type: "i32" }),
-        nativeToScVal(true, { type: "bool" }),
-      ),
+      value: map({
+        region_code: nativeToScVal(42, { type: "u32" }),
+        epoch: nativeToScVal(7, { type: "u32" }),
+        value: nativeToScVal(2500, { type: "i32" }),
+        accepted: nativeToScVal(true, { type: "bool" }),
+      }),
     });
 
     const parsed = parseEvent(raw);
@@ -76,12 +82,12 @@ describe("parseEvent", () => {
   it("parses a rejected reading event", () => {
     const raw = makeRaw({
       topic: [symbolTopic("reading"), addressTopic(device)],
-      value: vec(
-        nativeToScVal(42, { type: "u32" }),
-        nativeToScVal(7, { type: "u32" }),
-        nativeToScVal(999999, { type: "i32" }),
-        nativeToScVal(false, { type: "bool" }),
-      ),
+      value: map({
+        region_code: nativeToScVal(42, { type: "u32" }),
+        epoch: nativeToScVal(7, { type: "u32" }),
+        value: nativeToScVal(999999, { type: "i32" }),
+        accepted: nativeToScVal(false, { type: "bool" }),
+      }),
     });
 
     const parsed = parseEvent(raw);
@@ -91,7 +97,10 @@ describe("parseEvent", () => {
   it("parses a claimed event with an i128 payout", () => {
     const raw = makeRaw({
       topic: [symbolTopic("claimed"), addressTopic(device)],
-      value: vec(nativeToScVal(7, { type: "u32" }), nativeToScVal(150n, { type: "i128" })),
+      value: map({
+        epoch: nativeToScVal(7, { type: "u32" }),
+        payout: nativeToScVal(150n, { type: "i128" }),
+      }),
     });
 
     const parsed = parseEvent(raw);
@@ -101,10 +110,10 @@ describe("parseEvent", () => {
   it("parses a subscribed event with a u64 expiry", () => {
     const raw = makeRaw({
       topic: [symbolTopic("subscribe"), addressTopic(subscriber)],
-      value: vec(
-        nativeToScVal(3, { type: "u32" }),
-        nativeToScVal(1_893_456_000n, { type: "u64" }),
-      ),
+      value: map({
+        periods: nativeToScVal(3, { type: "u32" }),
+        new_expiry: nativeToScVal(1_893_456_000n, { type: "u64" }),
+      }),
     });
 
     const parsed = parseEvent(raw);
@@ -113,6 +122,22 @@ describe("parseEvent", () => {
       subscriber,
       periods: 3,
       expiry: 1_893_456_000n,
+    });
+  });
+
+  it("parses a device_deactivated event (no value payload)", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("deact_dev"), addressTopic(device)],
+      value: b64(xdr.ScVal.scvVoid()),
+    });
+
+    const parsed = parseEvent(raw);
+    expect(parsed).toEqual({
+      kind: "device_deactivated",
+      device,
+      ledger: 1000,
+      closedAt: "2026-01-01T00:00:00Z",
+      txHash: "deadbeef",
     });
   });
 

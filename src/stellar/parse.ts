@@ -77,7 +77,12 @@ export function parseEvent(raw: RawEvent): ParsedEvent | null {
 
   switch (eventName) {
     case "reg_dev": {
-      const deviceType = decode(raw.value);
+      // #[contractevent] encodes a struct's non-#[topic] fields as a
+      // single SCV_MAP keyed by field name (scValToNative turns this into
+      // a plain object) — not the bare value or positional tuple the
+      // pre-migration env.events().publish() calls used.
+      const data = decode(raw.value) as Record<string, unknown>;
+      const deviceType = data?.device_type;
       if (typeof deviceType !== "string") return null;
       return { kind: "device_registered", device: subject, deviceType, ...common };
     }
@@ -88,9 +93,9 @@ export function parseEvent(raw: RawEvent): ParsedEvent | null {
       return { kind: "device_deactivated", device: subject, ...common };
     }
     case "reading": {
-      const data = decode(raw.value) as unknown[];
-      if (!Array.isArray(data) || data.length !== 4) return null;
-      const [regionCode, epoch, value, accepted] = data;
+      const data = decode(raw.value) as Record<string, unknown>;
+      const { region_code: regionCode, epoch, value, accepted } = data ?? {};
+      if (regionCode === undefined || epoch === undefined || value === undefined) return null;
       return {
         kind: "reading",
         device: subject,
@@ -102,9 +107,9 @@ export function parseEvent(raw: RawEvent): ParsedEvent | null {
       };
     }
     case "claimed": {
-      const data = decode(raw.value) as unknown[];
-      if (!Array.isArray(data) || data.length !== 2) return null;
-      const [epoch, payout] = data;
+      const data = decode(raw.value) as Record<string, unknown>;
+      const { epoch, payout } = data ?? {};
+      if (epoch === undefined || payout === undefined) return null;
       return {
         kind: "claimed",
         device: subject,
@@ -114,9 +119,9 @@ export function parseEvent(raw: RawEvent): ParsedEvent | null {
       };
     }
     case "subscribe": {
-      const data = decode(raw.value) as unknown[];
-      if (!Array.isArray(data) || data.length !== 2) return null;
-      const [periods, expiry] = data;
+      const data = decode(raw.value) as Record<string, unknown>;
+      const { periods, new_expiry: expiry } = data ?? {};
+      if (periods === undefined || expiry === undefined) return null;
       return {
         kind: "subscribed",
         subscriber: subject,
