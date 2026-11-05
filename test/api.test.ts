@@ -341,5 +341,17 @@ describe("API", () => {
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty("error");
     });
+
+    it("400s when offset is negative", async () => {
+      const res = await request(app).get("/devices?offset=-5");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
+
+    it("400s when offset is non-numeric", async () => {
+      const res = await request(app).get("/devices?offset=xyz");
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("error");
+    });
   });
 });
