@@ -354,4 +354,34 @@ describe("API", () => {
       expect(res.body).toHaveProperty("error");
     });
   });
+
+  // ── Pagination: GET /devices/:address/readings ─────────────────────────────
+
+  describe("GET /devices/:address/readings pagination", () => {
+    beforeEach(() => {
+      // Seed 5 more readings for DEV1 (1 already exists, total will be 6)
+      for (let i = 2; i <= 6; i++) {
+        repo.insertReading(db, {
+          device_address: "DEV1",
+          device_type: "weather",
+          region_code: 42,
+          epoch: i,
+          value: 1000 + i,
+          accepted: 1,
+          ledger: 100 + i,
+          closed_at: "2026-01-01T00:00:00Z",
+          tx_hash: `TX_READ_${i}`,
+        });
+      }
+    });
+
+    it("returns a paginated envelope with data/total/limit/offset fields", async () => {
+      const res = await request(app).get("/devices/DEV1/readings");
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("data");
+      expect(res.body).toHaveProperty("total");
+      expect(res.body).toHaveProperty("limit");
+      expect(res.body).toHaveProperty("offset");
+    });
+  });
 });
