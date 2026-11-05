@@ -5,6 +5,36 @@ import type { Db } from "./client.js";
 export const DEFAULT_LIMIT = 50;
 export const MAX_LIMIT = 500;
 
+/**
+ * Generic wrapper returned by every paginated list endpoint.
+ *
+ * Shape: { data: T[], total: number, limit: number, offset: number }
+ *
+ * Why a JSON body envelope instead of response headers?
+ *
+ *   1. Easier to consume in JavaScript clients — no need to parse Link or
+ *      X-Total-Count headers; callers can do `result.total` directly.
+ *   2. Pagination metadata survives caching proxies and log aggregators
+ *      that may silently drop unknown custom headers.
+ *   3. Both list endpoints (GET /devices and GET /devices/:id/readings)
+ *      share this type, giving clients a single predictable contract.
+ *   4. Keeps the response self-describing: a client that receives a cold
+ *      cache entry can see the pagination params that produced it without
+ *      reconstructing the original request URL.
+ *
+ * Fields:
+ *   data   — the current page of rows
+ *   total  — full count of matching rows across all pages (before LIMIT/OFFSET)
+ *   limit  — the effective LIMIT used for this query (may be clamped to MAX_LIMIT)
+ *   offset — the OFFSET used for this query (mirrors the request param)
+ */
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface DeviceRow {
   address: string;
   owner: string | null;
