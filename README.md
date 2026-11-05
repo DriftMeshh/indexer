@@ -43,6 +43,10 @@ Responses are wrapped in a JSON envelope:
 - Both endpoints return HTTP **200** with an empty `data` array when
   `offset` exceeds `total` — this is intentional so clients can safely
   paginate to the end of a list.
+- `limit=0` is valid (returns an empty `data` array with the correct `total`),
+  useful for a cheap "how many items exist?" probe.
+- Float values for `limit` and `offset` are accepted and truncated:
+  `limit=2.9` is treated as `limit=2`.
 
 ## Why this exists
 
