@@ -533,6 +533,16 @@ describe("API", () => {
       expect(res.body).toHaveProperty("error");
     });
 
+    it("both limit and offset can be combined correctly", async () => {
+      // Readings ordered by ledger DESC: 106, 105, 104, 103, 102, 100
+      // offset=1 skips ledger 106; limit=2 returns 105 and 104
+      const res = await request(app).get("/devices/DEV1/readings?limit=2&offset=1");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.data[0].ledger).toBe(105);
+      expect(res.body.data[1].ledger).toBe(104);
+    });
+
     it("400s when offset is non-numeric", async () => {
       const res = await request(app).get("/devices/DEV1/readings?offset=bad");
       expect(res.status).toBe(400);
