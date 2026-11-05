@@ -20,6 +20,13 @@ export type ParsedEvent =
       txHash: string;
     }
   | {
+      kind: "device_deactivated";
+      device: string;
+      ledger: number;
+      closedAt: string;
+      txHash: string;
+    }
+  | {
       kind: "reading";
       device: string;
       regionCode: number;
@@ -73,6 +80,12 @@ export function parseEvent(raw: RawEvent): ParsedEvent | null {
       const deviceType = decode(raw.value);
       if (typeof deviceType !== "string") return null;
       return { kind: "device_registered", device: subject, deviceType, ...common };
+    }
+    case "deact_dev": {
+      // The deactivation event carries only the device address (topic[1])
+      // and no data payload (a void value), so there is nothing to decode
+      // here — the indexer just needs to know *which* device went inactive.
+      return { kind: "device_deactivated", device: subject, ...common };
     }
     case "reading": {
       const data = decode(raw.value) as unknown[];
