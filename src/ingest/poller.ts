@@ -89,6 +89,12 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
       }
       break;
     }
+    case "device_deactivated":
+      // The contract flips active -> false on deactivation; mirror that
+      // here so a deactivated device stops showing active = 1 immediately,
+      // without anything having to poll is_active directly.
+      repo.setDeviceActive(db, event.device, false);
+      break;
     case "reading":
       repo.insertReading(db, {
         device_address: event.device,

@@ -159,10 +159,13 @@ to survive both spin-downs and redeploys.
   either the contract's event is enriched or the poller is extended to
   also call `get_device` for newly-seen devices. `devices.owner`/`lat`/
   `lon` are nullable for exactly this reason, not by oversight.
-- **No deactivation events.** `device-registry.deactivate_device` doesn't
-  emit an event, so a device deactivated on-chain will still show
-  `active = 1` here until something polls `is_active` directly. A good
-  first Wave issue, paired with adding the event on the contract side.
+- **Deactivation events: indexer ready, contract side pending.** The
+  indexer now parses `device-registry`'s `deact_dev` event and flips
+  `devices.active` to 0 (`parse.ts` → `poller.ts` → `setDeviceActive`),
+  but `deactivate_device` on the contract side does not yet emit that
+  event — so until the companion contract change (adding a `DeactDev`
+  `#[contractevent]` whose topics are `["deact_dev", device_address]`)
+  lands, a device deactivated on-chain still shows `active = 1` here.
 - **Cursor seeding, not backfill.** Stellar RPC only retains a short
   window of event history (currently ~7 days). The first time the poller
   sees a contract it has no stored cursor for, it starts from the
