@@ -124,10 +124,24 @@ export function insertReading(db: Db, row: Omit<ReadingRow, "id">): void {
   ).run(row);
 }
 
-export function listReadingsForDevice(db: Db, address: string, limit = 100): ReadingRow[] {
-  return db
-    .prepare(`SELECT * FROM readings WHERE device_address = ? ORDER BY ledger DESC LIMIT ?`)
-    .all(address, limit) as ReadingRow[];
+export function listReadingsForDevice(
+  db: Db,
+  address: string,
+  limit = DEFAULT_LIMIT,
+  offset = 0,
+): PaginatedResult<ReadingRow> {
+  const clampedLimit = Math.min(limit, MAX_LIMIT);
+  const total = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM readings WHERE device_address = ?`)
+      .get(address) as { n: number }
+  ).n;
+  const data = db
+    .prepare(
+      `SELECT * FROM readings WHERE device_address = ? ORDER BY ledger DESC LIMIT ? OFFSET ?`,
+    )
+    .all(address, clampedLimit, offset) as ReadingRow[];
+  return { data, total, limit: clampedLimit, offset };
 }
 
 export function regionAverage(db: Db, regionCode: number, epoch: number): number | null {
