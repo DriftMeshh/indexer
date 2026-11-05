@@ -403,5 +403,23 @@ describe("API", () => {
       expect(res.body.data).toHaveLength(3);
       expect(res.body.limit).toBe(3);
     });
+
+    it("offset skips the correct number of rows", async () => {
+      const page1 = await request(app).get("/devices/DEV1/readings?limit=2&offset=0");
+      const page2 = await request(app).get("/devices/DEV1/readings?limit=2&offset=2");
+      expect(page1.status).toBe(200);
+      expect(page2.status).toBe(200);
+      const page1Ids = page1.body.data.map((r: { id: number }) => r.id);
+      const page2Ids = page2.body.data.map((r: { id: number }) => r.id);
+      const overlap = page1Ids.filter((id: number) => page2Ids.includes(id));
+      expect(overlap).toHaveLength(0);
+    });
+
+    it("offset beyond total returns empty data array", async () => {
+      const res = await request(app).get("/devices/DEV1/readings?offset=9999");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(0);
+      expect(res.body.total).toBe(6);
+    });
   });
 });
