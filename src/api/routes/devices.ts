@@ -69,9 +69,40 @@ export function devicesRouter(db: Db): Router {
     res.json(device);
   });
 
+  /**
+   * GET /devices/:address/readings
+   *
+   * Lists readings for a specific device, ordered by ledger (newest first).
+   *
+   * Query params:
+   *   limit  — number of records to return (default: 50, max: 500)
+   *   offset — number of records to skip    (default: 0)
+   *
+   * Response shape:
+   *   { data: ReadingRow[], total: number, limit: number, offset: number }
+   *
+   * Error responses:
+   *   400 — limit or offset is present but not a valid non-negative integer
+   */
   router.get("/:address/readings", (req, res) => {
-    const limit = req.query.limit ? Number(req.query.limit) : undefined;
-    res.json(repo.listReadingsForDevice(db, req.params.address, limit));
+    const rawLimit = parseNonNegativeInt(req.query.limit);
+    const rawOffset = parseNonNegativeInt(req.query.offset);
+
+    const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
+    const offset = rawOffset === null ? 0 : rawOffset;
+
+    if (!Number.isFinite(limit) || limit < 0) {
+      res
+        .status(400)
+        .json({ error: `"limit" must be a non-negative integer (max ${MAX_LIMIT})` });
+      return;
+    }
+    if (!Number.isFinite(offset) || offset < 0) {
+      res.status(400).json({ error: '"offset" must be a non-negative integer' });
+      return;
+    }
+
+    res.json(repo.listReadingsForDevice(db, req.params.address, limit, offset));
   });
 
   router.get("/:address/claims", (req, res) => {
