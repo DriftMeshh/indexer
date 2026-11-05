@@ -100,6 +100,7 @@ export function devicesRouter(db: Db): Router {
     const rawLimit = parseNonNegativeInt(req.query.limit);
     const rawOffset = parseNonNegativeInt(req.query.offset);
 
+    // null → absent → default; NaN → non-numeric → 400; < 0 → negative → 400
     const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
     const offset = rawOffset === null ? 0 : rawOffset;
 
