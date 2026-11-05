@@ -3,6 +3,10 @@ import type { Db } from "../../db/client.js";
 import * as repo from "../../db/repository.js";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../../db/repository.js";
 
+// Re-export so external modules (e.g. integration tests) can reference the
+// pagination constants without importing directly from the repository layer.
+export { DEFAULT_LIMIT, MAX_LIMIT } from "../../db/repository.js";
+
 /**
  * Parses a query-string value into a non-negative integer.
  *
