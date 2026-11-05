@@ -1,6 +1,24 @@
 import { Router } from "express";
 import type { Db } from "../../db/client.js";
 import * as repo from "../../db/repository.js";
+import { DEFAULT_LIMIT, MAX_LIMIT } from "../../db/repository.js";
+
+/**
+ * Parses a query-string value into a non-negative integer.
+ *
+ * Returns null  — value was absent (caller should apply its own default).
+ * Returns NaN   — value was present but not a valid finite number.
+ * Returns >= 0  — valid parsed integer (Math.trunc applied, so "1.5" → 1).
+ *
+ * Negative values are returned as-is; the caller checks for < 0 to emit
+ * a param-specific error message.
+ */
+function parseNonNegativeInt(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return NaN;
+  return Math.trunc(n);
+}
 
 export function devicesRouter(db: Db): Router {
   const router = Router();
