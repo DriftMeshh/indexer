@@ -439,6 +439,15 @@ describe("API", () => {
       expect(res.body.limit).toBe(3);
     });
 
+    it("response is ordered by ledger descending", async () => {
+      // The reading with the highest ledger (ledger=106, epoch=6) must come first.
+      const res = await request(app).get("/devices/DEV1/readings?limit=6");
+      expect(res.status).toBe(200);
+      // Ledger values seeded: 100 (original), 102-106 (seeded in beforeEach)
+      // Highest is 106 → this reading must be first
+      expect(res.body.data[0].ledger).toBe(106);
+    });
+
     it("offset skips the correct number of rows", async () => {
       const page1 = await request(app).get("/devices/DEV1/readings?limit=2&offset=0");
       const page2 = await request(app).get("/devices/DEV1/readings?limit=2&offset=2");
