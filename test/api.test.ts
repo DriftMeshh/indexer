@@ -302,5 +302,19 @@ describe("API", () => {
       expect(res.body.data).toHaveLength(3);
       expect(res.body.limit).toBe(3);
     });
+
+    it("offset skips the correct number of rows", async () => {
+      // Get first page
+      const page1 = await request(app).get("/devices?limit=2&offset=0");
+      // Get second page
+      const page2 = await request(app).get("/devices?limit=2&offset=2");
+      expect(page1.status).toBe(200);
+      expect(page2.status).toBe(200);
+      // Pages must not overlap
+      const page1Addrs = page1.body.data.map((d: { address: string }) => d.address);
+      const page2Addrs = page2.body.data.map((d: { address: string }) => d.address);
+      const overlap = page1Addrs.filter((a: string) => page2Addrs.includes(a));
+      expect(overlap).toHaveLength(0);
+    });
   });
 });
