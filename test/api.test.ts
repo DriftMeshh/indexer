@@ -107,6 +107,17 @@ describe("API", () => {
     expect(res.body.total).toBe(1); // only 1 device in outer beforeEach
   });
 
+  it("GET /devices returns correct total when database is empty", async () => {
+    // Close and reopen an empty DB to test with zero devices
+    const emptyDb = (await import("../src/db/client.js")).openDb(":memory:");
+    const emptyApp = (await import("../src/api/app.js")).createApp(emptyDb);
+    const res = await request(emptyApp).get("/devices");
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+    emptyDb.close();
+  });
+
   it("GET /devices/:address/readings returns that device's readings", async () => {
     const res = await request(app).get("/devices/DEV1/readings");
     expect(res.status).toBe(200);
