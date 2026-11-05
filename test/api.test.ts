@@ -49,8 +49,12 @@ describe("API", () => {
   it("GET /devices lists registered devices", async () => {
     const res = await request(app).get("/devices");
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].address).toBe("DEV1");
+    // Response is now a paginated envelope
+    expect(res.body).toHaveProperty("data");
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].address).toBe("DEV1");
+    expect(res.body.total).toBe(1);
+    expect(res.body.offset).toBe(0);
   });
 
   it("GET /devices/:address 404s for an unknown device", async () => {
