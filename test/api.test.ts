@@ -62,6 +62,19 @@ describe("API", () => {
     expect(res.status).toBe(404);
   });
 
+  it("GET /devices with float limit truncates to integer", async () => {
+    // limit=2.9 should be treated as limit=2 (Math.trunc behaviour)
+    const res = await request(app).get("/devices?limit=2.9");
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(2);
+  });
+
+  it("GET /devices/:address/readings with float limit truncates to integer", async () => {
+    const res = await request(app).get("/devices/DEV1/readings?limit=1.9");
+    expect(res.status).toBe(200);
+    expect(res.body.limit).toBe(1);
+  });
+
   it("GET /devices/:address/readings returns that device's readings", async () => {
     const res = await request(app).get("/devices/DEV1/readings");
     expect(res.status).toBe(200);
