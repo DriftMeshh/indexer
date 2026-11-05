@@ -64,6 +64,12 @@ describe("API", () => {
     expect(res.headers["content-type"]).toMatch(/application\/json/);
   });
 
+  it("GET /devices/:address/readings 400 error response is also application/json", async () => {
+    const res = await request(app).get("/devices/DEV1/readings?offset=bad");
+    expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+  });
+
   it("GET /devices lists registered devices", async () => {
     const res = await request(app).get("/devices");
     expect(res.status).toBe(200);
