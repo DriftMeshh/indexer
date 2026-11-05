@@ -15,6 +15,35 @@ Stellar RPC (getEvents) ──poll──▶ parser ──▶ SQLite ──▶ Ex
                                                      /subscriptions/:a
 ```
 
+## Pagination
+
+`GET /devices` and `GET /devices/:address/readings` support `limit`/`offset`
+query parameters:
+
+| Param    | Default | Max | Notes                                         |
+|----------|---------|-----|-----------------------------------------------|
+| `limit`  | 50      | 500 | Clamped to 500 if higher value supplied       |
+| `offset` | 0       | —   | 400 if negative or non-numeric                |
+
+Responses are wrapped in a JSON envelope:
+
+```json
+{
+  "data":   [ /* array of DeviceRow / ReadingRow */ ],
+  "total":  1234,
+  "limit":  50,
+  "offset": 0
+}
+```
+
+- `total` is the full count of matching rows **before** LIMIT/OFFSET, so
+  clients can calculate the number of pages without a separate request.
+- `limit` in the response reflects the **effective** limit (may be lower
+  than the requested value if it was clamped to 500).
+- Both endpoints return HTTP **200** with an empty `data` array when
+  `offset` exceeds `total` — this is intentional so clients can safely
+  paginate to the end of a list.
+
 ## Why this exists
 
 The four contracts work on their own, but nobody can see what's
