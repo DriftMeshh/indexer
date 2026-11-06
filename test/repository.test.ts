@@ -61,7 +61,7 @@ describe("repository", () => {
     repo.insertReading(db, reading);
     repo.insertReading(db, reading); // duplicate ingest, e.g. poller re-running an overlapping window
 
-    expect(repo.listReadingsForDevice(db, "DEV1")).toHaveLength(1);
+    expect(repo.listReadingsForDevice(db, "DEV1").data).toHaveLength(1);
   });
 
   it("computes the region average over accepted readings only", () => {

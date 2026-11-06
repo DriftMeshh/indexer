@@ -77,7 +77,7 @@ describe("poller", () => {
     expect(fetchEventsMock).toHaveBeenCalledWith(
       expect.objectContaining({ contractIds: ["CVALIDATOR"], startLedger: 5000 }),
     );
-    expect(repo.listReadingsForDevice(db, device)).toHaveLength(1);
+    expect(repo.listReadingsForDevice(db, device).data).toHaveLength(1);
     expect(repo.getCursor(db, "CVALIDATOR")).toBe(5010);
   });
 
