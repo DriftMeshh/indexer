@@ -21,7 +21,9 @@
     "@stellar/stellar-sdk": "^13.1.0",
     "better-sqlite3": "^11.7.0",
     "device-registry": "*",
-    "express": "^4.21.1"
+    "express": "^4.21.1",
+    "payment-streamer": "*",
+    "submission-validator": "*"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
