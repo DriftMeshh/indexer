@@ -127,6 +127,47 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
         updated_at_ledger: event.ledger,
       });
       break;
+    case "dispute_raised":
+      repo.insertDispute(db, {
+        device_address: event.device,
+        disputer: event.disputer,
+        evidence_hash: event.evidenceHash.toString(),
+        raised_ledger: event.ledger,
+        raised_closed_at: event.closedAt,
+        raised_tx_hash: event.txHash,
+      });
+      break;
+    case "dispute_resolved": {
+      const resolved = repo.resolveDispute(db, {
+        device_address: event.device,
+        upheld: event.upheld,
+        resolved_ledger: event.ledger,
+        resolved_closed_at: event.closedAt,
+        resolved_tx_hash: event.txHash,
+      });
+      if (!resolved) {
+        // Not a failure — e.g. the dispute was raised before this indexer
+        // started watching the contract (cursor seeding, not backfill;
+        // see README) — but worth knowing about if it happens a lot.
+        logger.warn("poller", "dispute_resolved with no matching open dispute", {
+          device: event.device,
+        });
+      }
+      // The contract's own event already tells us the resulting active
+      // state directly (device_active) — no need for a second read.
+      repo.setDeviceActive(db, event.device, event.deviceActive);
+      break;
+    }
+    case "auto_slash_threshold_reached":
+      repo.insertAutoSlashEvent(db, {
+        device_address: event.device,
+        rejected_count: event.rejectedCount,
+        threshold: event.threshold,
+        ledger: event.ledger,
+        closed_at: event.closedAt,
+        tx_hash: event.txHash,
+      });
+      break;
   }
 }
 
