@@ -160,6 +160,108 @@ describe("poller", () => {
     const stored = repo.getDevice(db, device);
     expect(stored).toMatchObject({ owner: null, lat: null, lon: null, device_type: "weather" });
   });
+
+  it("ingests a dispute_raised event, incrementing the device's open_disputes count", async () => {
+    latestLedgerMock.mockResolvedValue(5000);
+    repo.upsertDevice(db, {
+      address: device,
+      owner: null,
+      device_type: "weather",
+      lat: null,
+      lon: null,
+      registered_at: 1000,
+    });
+    const disputer = Keypair.random().publicKey();
+
+    const disputeEvent: RawEvent = {
+      contractId: "CREGISTRY",
+      topic: [
+        b64(nativeToScVal("dispute_raised", { type: "symbol" })),
+        b64(nativeToScVal(device, { type: "address" })),
+      ],
+      value: map({
+        disputer: nativeToScVal(disputer, { type: "address" }),
+        evidence_hash: nativeToScVal(42n, { type: "u64" }),
+        open_dispute_count: nativeToScVal(1, { type: "u32" }),
+      }),
+      ledger: 5010,
+      ledgerClosedAt: "2026-01-01T00:00:00Z",
+      txHash: "TX_DISPUTE",
+    };
+    fetchEventsMock.mockResolvedValue({ events: [disputeEvent], latestLedger: 5010 });
+
+    const config = loadConfig({ DEVICE_REGISTRY_CONTRACT_ID: "CREGISTRY" });
+    await pollOnce({ db, config });
+
+    expect(repo.getDevice(db, device)?.open_disputes).toBe(1);
+    expect(repo.listDisputesForDevice(db, device)).toMatchObject([{ disputer, status: "open" }]);
+  });
+
+  it("ingests a dispute_resolved event and sets the device's active state from it directly", async () => {
+    latestLedgerMock.mockResolvedValue(5000);
+    repo.upsertDevice(db, {
+      address: device,
+      owner: null,
+      device_type: "weather",
+      lat: null,
+      lon: null,
+      registered_at: 1000,
+    });
+    repo.insertDispute(db, {
+      device_address: device,
+      disputer: Keypair.random().publicKey(),
+      evidence_hash: "1",
+      raised_ledger: 100,
+      raised_closed_at: "2026-01-01T00:00:00Z",
+      raised_tx_hash: "TX_RAISE",
+    });
+
+    const resolvedEvent: RawEvent = {
+      contractId: "CREGISTRY",
+      topic: [
+        b64(nativeToScVal("dispute_resolved", { type: "symbol" })),
+        b64(nativeToScVal(device, { type: "address" })),
+      ],
+      value: map({
+        upheld: nativeToScVal(true, { type: "bool" }),
+        upheld_total: nativeToScVal(1, { type: "u32" }),
+        device_active: nativeToScVal(false, { type: "bool" }),
+      }),
+      ledger: 5010,
+      ledgerClosedAt: "2026-01-01T00:00:00Z",
+      txHash: "TX_RESOLVE",
+    };
+    fetchEventsMock.mockResolvedValue({ events: [resolvedEvent], latestLedger: 5010 });
+
+    const config = loadConfig({ DEVICE_REGISTRY_CONTRACT_ID: "CREGISTRY" });
+    await pollOnce({ db, config });
+
+    const stored = repo.getDevice(db, device);
+    expect(stored).toMatchObject({ active: 0, open_disputes: 0, upheld_disputes: 1 });
+  });
+
+  it("ingests an auto_slash_threshold_reached event without throwing", async () => {
+    latestLedgerMock.mockResolvedValue(5000);
+
+    const autoSlashEvent: RawEvent = {
+      contractId: "CVALIDATOR",
+      topic: [
+        b64(nativeToScVal("auto_slash_threshold_reached", { type: "symbol" })),
+        b64(nativeToScVal(device, { type: "address" })),
+      ],
+      value: map({
+        rejected_count: nativeToScVal(3, { type: "u32" }),
+        threshold: nativeToScVal(3, { type: "u32" }),
+      }),
+      ledger: 5010,
+      ledgerClosedAt: "2026-01-01T00:00:00Z",
+      txHash: "TX_AUTO_SLASH",
+    };
+    fetchEventsMock.mockResolvedValue({ events: [autoSlashEvent], latestLedger: 5010 });
+
+    const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
+    await expect(pollOnce({ db, config })).resolves.not.toThrow();
+  });
 });
 
 describe("startPolling", () => {
