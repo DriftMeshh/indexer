@@ -32,7 +32,7 @@ if (watchedContracts.length === 0) {
   console.log(`[index] polling ${watchedContracts.length} contract(s) every ${config.pollIntervalMs}ms`);
 }
 
-const app = createApp(db);
+const app = createApp(db, config);
 app.listen(config.port, () => {
   console.log(`[index] API listening on :${config.port}`);
 });

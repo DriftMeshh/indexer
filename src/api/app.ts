@@ -1,11 +1,19 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import type { Db } from "../db/client.js";
+import type { Config } from "../config.js";
 import { devicesRouter } from "./routes/devices.js";
 import { regionsRouter } from "./routes/regions.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { readingsRouter } from "./routes/readings.js";
+import { epochsRouter } from "./routes/epochs.js";
 
-export function createApp(db: Db): Express {
+/**
+ * `config` is optional so existing callers (and most tests, which only
+ * exercise the DB-backed routes) don't need to supply one. Without it,
+ * GET /epochs/:epoch always responds 503 — it needs live RPC access,
+ * which isn't meaningful against an in-memory test DB anyway.
+ */
+export function createApp(db: Db, config?: Config): Express {
   const app = express();
   app.use(express.json());
 
@@ -43,6 +51,13 @@ export function createApp(db: Db): Express {
   app.use("/regions", regionsRouter(db));
   app.use("/subscriptions", subscriptionsRouter(db));
   app.use("/readings", readingsRouter(db));
+  if (config) {
+    app.use("/epochs", epochsRouter(config));
+  } else {
+    app.get("/epochs/:epoch", (_req, res) =>
+      res.status(503).json({ error: "epoch status unavailable — no config supplied to createApp" }),
+    );
+  }
 
   // Centralized error-handling middleware — must be registered after all
   // routes (Express uses the 4-argument signature to detect error handlers).
