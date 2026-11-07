@@ -55,6 +55,35 @@ export type ParsedEvent =
       ledger: number;
       closedAt: string;
       txHash: string;
+    }
+  | {
+      kind: "dispute_raised";
+      device: string;
+      disputer: string;
+      evidenceHash: bigint;
+      openDisputeCount: number;
+      ledger: number;
+      closedAt: string;
+      txHash: string;
+    }
+  | {
+      kind: "dispute_resolved";
+      device: string;
+      upheld: boolean;
+      upheldTotal: number;
+      deviceActive: boolean;
+      ledger: number;
+      closedAt: string;
+      txHash: string;
+    }
+  | {
+      kind: "auto_slash_threshold_reached";
+      device: string;
+      rejectedCount: number;
+      threshold: number;
+      ledger: number;
+      closedAt: string;
+      txHash: string;
     };
 
 function decode(base64: string): unknown {
@@ -135,6 +164,53 @@ export function parseEvent(raw: RawEvent): ParsedEvent | null {
         subscriber: subject,
         periods: Number(periods),
         expiry: BigInt(expiry as bigint | number),
+        ...common,
+      };
+    }
+    case "dispute_raised": {
+      const data = decode(raw.value) as Record<string, unknown>;
+      const { disputer, evidence_hash: evidenceHash, open_dispute_count: openDisputeCount } =
+        data ?? {};
+      if (
+        typeof disputer !== "string" ||
+        evidenceHash === undefined ||
+        openDisputeCount === undefined
+      ) {
+        return null;
+      }
+      return {
+        kind: "dispute_raised",
+        device: subject,
+        disputer,
+        evidenceHash: BigInt(evidenceHash as bigint | number),
+        openDisputeCount: Number(openDisputeCount),
+        ...common,
+      };
+    }
+    case "dispute_resolved": {
+      const data = decode(raw.value) as Record<string, unknown>;
+      const { upheld, upheld_total: upheldTotal, device_active: deviceActive } = data ?? {};
+      if (upheld === undefined || upheldTotal === undefined || deviceActive === undefined) {
+        return null;
+      }
+      return {
+        kind: "dispute_resolved",
+        device: subject,
+        upheld: Boolean(upheld),
+        upheldTotal: Number(upheldTotal),
+        deviceActive: Boolean(deviceActive),
+        ...common,
+      };
+    }
+    case "auto_slash_threshold_reached": {
+      const data = decode(raw.value) as Record<string, unknown>;
+      const { rejected_count: rejectedCount, threshold } = data ?? {};
+      if (rejectedCount === undefined || threshold === undefined) return null;
+      return {
+        kind: "auto_slash_threshold_reached",
+        device: subject,
+        rejectedCount: Number(rejectedCount),
+        threshold: Number(threshold),
         ...common,
       };
     }
