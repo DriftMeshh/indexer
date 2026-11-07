@@ -22,6 +22,7 @@ export type ParsedEvent =
   | {
       kind: "device_deactivated";
       device: string;
+      reason: string;
       ledger: number;
       closedAt: string;
       txHash: string;
@@ -86,11 +87,18 @@ export function parseEvent(raw: RawEvent): ParsedEvent | null {
       if (typeof deviceType !== "string") return null;
       return { kind: "device_registered", device: subject, deviceType, ...common };
     }
-    case "deact_dev": {
-      // The deactivation event carries only the device address (topic[1])
-      // and no data payload (a void value), so there is nothing to decode
-      // here — the indexer just needs to know *which* device went inactive.
-      return { kind: "device_deactivated", device: subject, ...common };
+    case "device_deactivated": {
+      // Fixed from an earlier "deact_dev" guess that never matched the
+      // real on-chain topic: device-registry's `DeviceDeactivated` struct
+      // has no #[contractevent(topics = ...)] override, so the macro
+      // derives its topic from the struct name via snake_case —
+      // "device_deactivated", not "deact_dev". This meant deactivation
+      // events were silently dropped (caught by the poller's unrecognised-
+      // event warning, never by a thrown error) until this fix.
+      const data = decode(raw.value) as Record<string, unknown>;
+      const reason = data?.reason;
+      if (typeof reason !== "string") return null;
+      return { kind: "device_deactivated", device: subject, reason, ...common };
     }
     case "reading": {
       const data = decode(raw.value) as Record<string, unknown>;

@@ -125,20 +125,33 @@ describe("parseEvent", () => {
     });
   });
 
-  it("parses a device_deactivated event (no value payload)", () => {
+  it("parses a device_deactivated event", () => {
+    // Topic is "device_deactivated" (heck::ToSnakeCase of the contract's
+    // `DeviceDeactivated` struct name) — an earlier version of this parser
+    // guessed "deact_dev" instead, which never matched the real on-chain
+    // topic and silently dropped every deactivation.
     const raw = makeRaw({
-      topic: [symbolTopic("deact_dev"), addressTopic(device)],
-      value: b64(xdr.ScVal.scvVoid()),
+      topic: [symbolTopic("device_deactivated"), addressTopic(device)],
+      value: map({ reason: nativeToScVal("admin", { type: "symbol" }) }),
     });
 
     const parsed = parseEvent(raw);
     expect(parsed).toEqual({
       kind: "device_deactivated",
       device,
+      reason: "admin",
       ledger: 1000,
       closedAt: "2026-01-01T00:00:00Z",
       txHash: "deadbeef",
     });
+  });
+
+  it("returns null for a device_deactivated event missing its reason field", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("device_deactivated"), addressTopic(device)],
+      value: map({}),
+    });
+    expect(parseEvent(raw)).toBeNull();
   });
 
   it("returns null for an unrecognised event name", () => {
