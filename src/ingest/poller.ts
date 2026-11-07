@@ -4,6 +4,7 @@ import { fetchEvents, latestLedger } from "../stellar/rpc.js";
 import { fetchDeviceRecord } from "../stellar/registry.js";
 import { parseEvent, type ParsedEvent } from "../stellar/parse.js";
 import type { Config } from "../config.js";
+import { logger, serializeError } from "../logger.js";
 
 export interface PollerDeps {
   db: Db;
@@ -43,7 +44,7 @@ async function pollContract(db: Db, config: Config, contractId: string): Promise
   for (const raw of events) {
     const parsed = parseEvent(raw);
     if (!parsed) {
-      console.warn(`[poller] unrecognised event on ${contractId}, topic[0]=${raw.topic[0]}`);
+      logger.warn("poller", "unrecognised event", { contractId, topic0: raw.topic[0] });
       continue;
     }
     await applyEvent(db, config, parsed);
@@ -156,7 +157,7 @@ export function startPolling(deps: PollerDeps, intervalMs: number): PollerHandle
       try {
         await pollOnce(deps);
       } catch (err) {
-        console.error("[poller] tick failed:", err);
+        logger.error("poller", "tick failed", serializeError(err));
       }
     })();
     await currentTick;

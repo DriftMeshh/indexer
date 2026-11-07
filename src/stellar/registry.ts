@@ -1,4 +1,5 @@
 import { Client as DeviceRegistryClient } from "device-registry";
+import { logger, serializeError } from "../logger.js";
 
 export interface DeviceRecord {
   owner: string;
@@ -38,7 +39,7 @@ export async function fetchDeviceRecord(
       active: device.active,
     };
   } catch (err) {
-    console.warn(`[registry] failed to enrich device ${address}:`, err);
+    logger.warn("registry", "failed to enrich device", { address, ...serializeError(err) });
     return null;
   }
 }

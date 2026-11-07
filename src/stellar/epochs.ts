@@ -1,5 +1,6 @@
 import { Client as SubmissionValidatorClient } from "submission-validator";
 import { Client as PaymentStreamerClient } from "payment-streamer";
+import { logger, serializeError } from "../logger.js";
 
 export interface EpochStatus {
   epoch: number;
@@ -51,7 +52,7 @@ export async function fetchEpochStatus(
       epochPool: poolTx.result.toString(),
     };
   } catch (err) {
-    console.warn(`[epochs] failed to read epoch ${epoch} status:`, err);
+    logger.warn("epochs", "failed to read epoch status", { epoch, ...serializeError(err) });
     return null;
   }
 }
