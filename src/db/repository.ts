@@ -60,6 +60,8 @@ export interface DeviceRow {
   lon: number | null;
   registered_at: number;
   active: number;
+  open_disputes: number;
+  upheld_disputes: number;
 }
 
 export interface ReadingRow {
@@ -94,7 +96,11 @@ export interface SubscriptionRow {
 
 export function upsertDevice(
   db: Db,
-  row: Omit<DeviceRow, "active"> & { active?: number },
+  // open_disputes/upheld_disputes are owned by the dispute repository
+  // functions, never set here — the INSERT relies on their column
+  // DEFAULT 0, and the ON CONFLICT branch doesn't touch them at all, so
+  // an existing device's counts survive a later registration-event replay.
+  row: Omit<DeviceRow, "active" | "open_disputes" | "upheld_disputes"> & { active?: number },
 ): void {
   db.prepare(
     `INSERT INTO devices (address, owner, device_type, lat, lon, registered_at, active)
@@ -245,4 +251,115 @@ export function setCursor(db: Db, contractId: string, lastLedger: number): void 
     `INSERT INTO ingest_cursor (contract_id, last_ledger) VALUES (?, ?)
      ON CONFLICT(contract_id) DO UPDATE SET last_ledger = excluded.last_ledger`,
   ).run(contractId, lastLedger);
+}
+
+export interface DisputeRow {
+  id: number;
+  device_address: string;
+  disputer: string;
+  evidence_hash: string;
+  status: "open" | "upheld" | "dismissed";
+  raised_ledger: number;
+  raised_closed_at: string;
+  raised_tx_hash: string;
+  resolved_ledger: number | null;
+  resolved_closed_at: string | null;
+  resolved_tx_hash: string | null;
+}
+
+/** Inserts a new open dispute and bumps the device's denormalized open_disputes count. */
+export function insertDispute(
+  db: Db,
+  row: {
+    device_address: string;
+    disputer: string;
+    evidence_hash: string;
+    raised_ledger: number;
+    raised_closed_at: string;
+    raised_tx_hash: string;
+  },
+): void {
+  const result = db
+    .prepare(
+      `INSERT OR IGNORE INTO disputes
+         (device_address, disputer, evidence_hash, raised_ledger, raised_closed_at, raised_tx_hash)
+       VALUES (@device_address, @disputer, @evidence_hash, @raised_ledger, @raised_closed_at, @raised_tx_hash)`,
+    )
+    .run(row);
+  // INSERT OR IGNORE silently no-ops on a duplicate (tx_hash, device_address)
+  // — a re-ingested overlapping poll window, same pattern as insertReading.
+  // Only bump the count for a genuinely new row.
+  if (result.changes > 0) {
+    db.prepare(`UPDATE devices SET open_disputes = open_disputes + 1 WHERE address = ?`).run(
+      row.device_address,
+    );
+  }
+}
+
+/**
+ * Resolves whichever dispute is still open for this device — matches by
+ * status alone, not a dispute ID, because device-registry's
+ * `dispute_resolved` event doesn't carry one and only allows one open
+ * dispute per device at a time (see client.ts's disputes table comment).
+ * A resolution with no matching open row (e.g. ingested out of order, or
+ * a dispute raised before this indexer started watching the contract) is
+ * logged by the caller and otherwise a safe no-op — there's nothing to
+ * update.
+ */
+export function resolveDispute(
+  db: Db,
+  row: {
+    device_address: string;
+    upheld: boolean;
+    resolved_ledger: number;
+    resolved_closed_at: string;
+    resolved_tx_hash: string;
+  },
+): boolean {
+  const open = db
+    .prepare(
+      `SELECT id FROM disputes WHERE device_address = ? AND status = 'open'
+       ORDER BY raised_ledger DESC LIMIT 1`,
+    )
+    .get(row.device_address) as { id: number } | undefined;
+  if (!open) return false;
+
+  db.prepare(
+    `UPDATE disputes SET status = ?, resolved_ledger = ?, resolved_closed_at = ?, resolved_tx_hash = ?
+     WHERE id = ?`,
+  ).run(row.upheld ? "upheld" : "dismissed", row.resolved_ledger, row.resolved_closed_at, row.resolved_tx_hash, open.id);
+
+  db.prepare(`UPDATE devices SET open_disputes = MAX(open_disputes - 1, 0) WHERE address = ?`).run(
+    row.device_address,
+  );
+  if (row.upheld) {
+    db.prepare(`UPDATE devices SET upheld_disputes = upheld_disputes + 1 WHERE address = ?`).run(
+      row.device_address,
+    );
+  }
+  return true;
+}
+
+export function listDisputesForDevice(db: Db, address: string): DisputeRow[] {
+  return db
+    .prepare(`SELECT * FROM disputes WHERE device_address = ? ORDER BY raised_ledger DESC`)
+    .all(address) as DisputeRow[];
+}
+
+export interface AutoSlashEventRow {
+  id: number;
+  device_address: string;
+  rejected_count: number;
+  threshold: number;
+  ledger: number;
+  closed_at: string;
+  tx_hash: string;
+}
+
+export function insertAutoSlashEvent(db: Db, row: Omit<AutoSlashEventRow, "id">): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO auto_slash_events
+       (device_address, rejected_count, threshold, ledger, closed_at, tx_hash)
+     VALUES (@device_address, @rejected_count, @threshold, @ledger, @closed_at, @tx_hash)`,
+  ).run(row);
 }
