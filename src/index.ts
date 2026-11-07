@@ -22,17 +22,47 @@ const config = loadConfig();
 const db = openDb(config.dbPath);
 
 const watchedContracts = configuredContractIds(config);
+let poller: ReturnType<typeof startPolling> | undefined;
 if (watchedContracts.length === 0) {
   console.warn(
     "[index] no contract IDs configured — the API will serve an empty dataset until " +
       "DEVICE_REGISTRY_CONTRACT_ID etc. are set in .env. See .env.example.",
   );
 } else {
-  startPolling({ db, config }, config.pollIntervalMs);
+  poller = startPolling({ db, config }, config.pollIntervalMs);
   console.log(`[index] polling ${watchedContracts.length} contract(s) every ${config.pollIntervalMs}ms`);
 }
 
 const app = createApp(db, config);
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`[index] API listening on :${config.port}`);
 });
+
+/**
+ * A deploy restart or container stop sends SIGTERM (Ctrl-C sends SIGINT
+ * locally). Without handling it, the process dies mid-write: a poll cycle
+ * that's partway through an insert, or an HTTP response still being
+ * written. Shut down in dependency order instead — stop taking new poll
+ * cycles and new HTTP connections first, let whatever's already in flight
+ * finish, then close the DB last, since both the poller and any in-flight
+ * request may still touch it right up until they settle.
+ */
+let shuttingDown = false;
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[index] received ${signal}, shutting down gracefully...`);
+
+  poller?.stop();
+  const closeServer = new Promise<void>((resolve) => server.close(() => resolve()));
+
+  await poller?.whenIdle();
+  await closeServer;
+
+  db.close();
+  console.log("[index] shutdown complete");
+  process.exit(0);
+}
+
+process.on("SIGTERM", (signal) => void shutdown(signal));
+process.on("SIGINT", (signal) => void shutdown(signal));
