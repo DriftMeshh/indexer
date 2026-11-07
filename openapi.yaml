@@ -1,0 +1,392 @@
+openapi: 3.0.3
+info:
+  title: DriftMesh Indexer API
+  description: >
+    Read-only REST API over device/reading/claim/subscription data indexed
+    from the DriftMesh Soroban contracts on Stellar testnet. Every route is
+    a public GET with no authentication.
+  version: "0.1.0"
+  license:
+    name: MIT
+servers:
+  - url: /
+    description: Same-origin or reverse-proxied deployment
+security: []
+paths:
+  /health:
+    get:
+      summary: Liveness check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+
+  /devices:
+    get:
+      summary: List registered devices
+      description: Ordered by registration date, newest first.
+      operationId: listDevices
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: A page of devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedDevices"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /devices/{address}:
+    get:
+      summary: Get a single device by address
+      operationId: getDevice
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: The device record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "404":
+          description: No device registered at this address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /devices/{address}/readings:
+    get:
+      summary: List a device's submitted readings
+      description: Ordered by ledger, newest first.
+      operationId: listDeviceReadings
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: A page of readings (empty data array for an unknown device)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedReadings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /devices/{address}/claims:
+    get:
+      summary: List a device's payout claims
+      operationId: listDeviceClaims
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: All claims for this device, ordered by epoch descending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Claim"
+
+  /regions/{code}/average:
+    get:
+      summary: Average accepted reading value for a region in an epoch
+      operationId: getRegionAverage
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Region code
+        - name: epoch
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: The computed average (null if no accepted readings exist)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  regionCode:
+                    type: integer
+                  epoch:
+                    type: integer
+                  average:
+                    type: number
+                    nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /readings:
+    get:
+      summary: List all readings for a region+epoch
+      description: >
+        Includes both accepted and rejected readings (unlike the region
+        average, which only counts accepted=1 rows). Not paginated — see
+        the open issue about adding limit/offset here too.
+      operationId: listReadingsByRegionEpoch
+      parameters:
+        - name: region
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: epoch
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Matching readings, ordered by ledger descending (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reading"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /subscriptions/{address}:
+    get:
+      summary: Get a subscriber's current subscription status
+      operationId: getSubscription
+      parameters:
+        - name: address
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: >
+            Always 200 — an address with no subscription history reports
+            active=false rather than 404, since "never subscribed" is a
+            valid, common state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subscription"
+
+  /epochs/{epoch}:
+    get:
+      summary: Get an epoch's live finality, total submissions, and pool balance
+      description: >
+        Reads directly from submission-validator and payment-streamer on
+        chain — this is live contract state, not DB-served, since the
+        current (still-open) epoch has no "finalized" event for the poller
+        to have ingested yet.
+      operationId: getEpochStatus
+      parameters:
+        - name: epoch
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: Epoch status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpochStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          description: >
+            Contract IDs not configured, or the live RPC read failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  parameters:
+    Address:
+      name: address
+      in: path
+      required: true
+      schema:
+        type: string
+      description: A Stellar account address (G...)
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 50
+      description: Page size. Clamped to 500 if a higher value is supplied.
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    BadRequest:
+      description: A query or path parameter was missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    Device:
+      type: object
+      properties:
+        address:
+          type: string
+        owner:
+          type: string
+          nullable: true
+        device_type:
+          type: string
+        lat:
+          type: integer
+          nullable: true
+          description: Degrees * 1e4 fixed-point
+        lon:
+          type: integer
+          nullable: true
+        registered_at:
+          type: integer
+          description: Unix timestamp
+        active:
+          type: integer
+          enum: [0, 1]
+
+    Reading:
+      type: object
+      properties:
+        id:
+          type: integer
+        device_address:
+          type: string
+        device_type:
+          type: string
+          nullable: true
+        region_code:
+          type: integer
+        epoch:
+          type: integer
+        value:
+          type: integer
+        accepted:
+          type: integer
+          enum: [0, 1]
+        ledger:
+          type: integer
+        closed_at:
+          type: string
+          format: date-time
+        tx_hash:
+          type: string
+
+    Claim:
+      type: object
+      properties:
+        id:
+          type: integer
+        device_address:
+          type: string
+        epoch:
+          type: integer
+        payout:
+          type: string
+          description: Stringified i128 stroops (too large for a JS number)
+        ledger:
+          type: integer
+        closed_at:
+          type: string
+          format: date-time
+        tx_hash:
+          type: string
+
+    Subscription:
+      type: object
+      properties:
+        subscriber:
+          type: string
+        active:
+          type: boolean
+        expiry:
+          type: integer
+          description: Unix timestamp; 0 if never subscribed
+        periods_last_purchase:
+          type: integer
+        updated_at_ledger:
+          type: integer
+
+    EpochStatus:
+      type: object
+      properties:
+        epoch:
+          type: integer
+        isFinal:
+          type: boolean
+        totalSubmissions:
+          type: integer
+        epochPool:
+          type: string
+          description: Stringified i128 stroops; "0" until the epoch's first claim snapshots it
+
+    PaginatedDevices:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    PaginatedReadings:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Reading"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer

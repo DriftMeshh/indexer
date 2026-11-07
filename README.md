@@ -12,8 +12,13 @@ Stellar RPC (getEvents) ──poll──▶ parser ──▶ SQLite ──▶ Ex
                                                      /devices/:a/claims,
                                                      /regions/:code/average,
                                                      /readings?region=&epoch=,
-                                                     /subscriptions/:a
+                                                     /subscriptions/:a,
+                                                     /epochs/:epoch
 ```
+
+See [`openapi.yaml`](./openapi.yaml) for the full machine-readable API spec
+(every endpoint, query param, and response shape — validated with
+`npx @redocly/cli lint openapi.yaml`).
 
 ## Pagination
 
@@ -77,7 +82,7 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 38 tests: parser, repository, poller (RPC mocked), API
+npm test                # 96 tests: parser, repository, poller (RPC mocked), API, logger
 npm run typecheck
 npm run build && npm start   # production build
 ```
