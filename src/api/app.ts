@@ -6,6 +6,7 @@ import { regionsRouter } from "./routes/regions.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { readingsRouter } from "./routes/readings.js";
 import { epochsRouter } from "./routes/epochs.js";
+import { logger, serializeError } from "../logger.js";
 
 /**
  * `config` is optional so existing callers (and most tests, which only
@@ -29,8 +30,7 @@ export function createApp(db: Db, config?: Config): Express {
 
   // Request logger — records method, path, status code, and round-trip
   // duration in milliseconds. Runs after the response is finished so the
-  // status code is final. Matches the [module] console.log style used in
-  // poller.ts and index.ts.
+  // status code is final.
   //
   // Uses res.on("finish") rather than inline logging before next() so that
   // the status code and duration are both available — if we logged before
@@ -40,7 +40,12 @@ export function createApp(db: Db, config?: Config): Express {
     const start = Date.now();
     res.on("finish", () => {
       const ms = Date.now() - start;
-      console.log(`[api] ${req.method} ${req.path} ${res.statusCode} ${ms}ms`);
+      logger.info("api", "request", {
+        method: req.method,
+        path: req.path,
+        status: res.statusCode,
+        ms,
+      });
     });
     next();
   });
@@ -68,7 +73,7 @@ export function createApp(db: Db, config?: Config): Express {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const message = err instanceof Error ? err.message : "internal server error";
-    console.error("[api] unhandled error:", err);
+    logger.error("api", "unhandled error", serializeError(err));
     res.status(500).json({ error: message });
   });
 
