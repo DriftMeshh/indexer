@@ -154,6 +154,101 @@ describe("parseEvent", () => {
     expect(parseEvent(raw)).toBeNull();
   });
 
+  it("parses a dispute_raised event", () => {
+    const disputer = Keypair.random().publicKey();
+    const raw = makeRaw({
+      topic: [symbolTopic("dispute_raised"), addressTopic(device)],
+      value: map({
+        disputer: nativeToScVal(disputer, { type: "address" }),
+        evidence_hash: nativeToScVal(123456789n, { type: "u64" }),
+        open_dispute_count: nativeToScVal(1, { type: "u32" }),
+      }),
+    });
+
+    expect(parseEvent(raw)).toEqual({
+      kind: "dispute_raised",
+      device,
+      disputer,
+      evidenceHash: 123456789n,
+      openDisputeCount: 1,
+      ledger: 1000,
+      closedAt: "2026-01-01T00:00:00Z",
+      txHash: "deadbeef",
+    });
+  });
+
+  it("returns null for a dispute_raised event missing a required field", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("dispute_raised"), addressTopic(device)],
+      value: map({ disputer: nativeToScVal(device, { type: "address" }) }),
+    });
+    expect(parseEvent(raw)).toBeNull();
+  });
+
+  it("parses a dispute_resolved event (upheld)", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("dispute_resolved"), addressTopic(device)],
+      value: map({
+        upheld: nativeToScVal(true, { type: "bool" }),
+        upheld_total: nativeToScVal(2, { type: "u32" }),
+        device_active: nativeToScVal(false, { type: "bool" }),
+      }),
+    });
+
+    expect(parseEvent(raw)).toEqual({
+      kind: "dispute_resolved",
+      device,
+      upheld: true,
+      upheldTotal: 2,
+      deviceActive: false,
+      ledger: 1000,
+      closedAt: "2026-01-01T00:00:00Z",
+      txHash: "deadbeef",
+    });
+  });
+
+  it("parses a dispute_resolved event (dismissed)", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("dispute_resolved"), addressTopic(device)],
+      value: map({
+        upheld: nativeToScVal(false, { type: "bool" }),
+        upheld_total: nativeToScVal(0, { type: "u32" }),
+        device_active: nativeToScVal(true, { type: "bool" }),
+      }),
+    });
+
+    expect(parseEvent(raw)).toEqual({
+      kind: "dispute_resolved",
+      device,
+      upheld: false,
+      upheldTotal: 0,
+      deviceActive: true,
+      ledger: 1000,
+      closedAt: "2026-01-01T00:00:00Z",
+      txHash: "deadbeef",
+    });
+  });
+
+  it("parses an auto_slash_threshold_reached event", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("auto_slash_threshold_reached"), addressTopic(device)],
+      value: map({
+        rejected_count: nativeToScVal(3, { type: "u32" }),
+        threshold: nativeToScVal(3, { type: "u32" }),
+      }),
+    });
+
+    expect(parseEvent(raw)).toEqual({
+      kind: "auto_slash_threshold_reached",
+      device,
+      rejectedCount: 3,
+      threshold: 3,
+      ledger: 1000,
+      closedAt: "2026-01-01T00:00:00Z",
+      txHash: "deadbeef",
+    });
+  });
+
   it("returns null for an unrecognised event name", () => {
     const raw = makeRaw({
       topic: [symbolTopic("some_other_event"), addressTopic(device)],
