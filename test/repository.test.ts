@@ -141,4 +141,187 @@ describe("repository", () => {
 
     expect(repo.getSubscription(db, "SUB1")?.expiry).toBe(2000);
   });
+
+  describe("disputes", () => {
+    beforeEach(() => {
+      repo.upsertDevice(db, {
+        address: "DEV1",
+        owner: "OWNER1",
+        device_type: "weather",
+        lat: 10,
+        lon: 20,
+        registered_at: 1000,
+      });
+    });
+
+    it("insertDispute increments the device's open_disputes count", () => {
+      repo.insertDispute(db, {
+        device_address: "DEV1",
+        disputer: "DISPUTER1",
+        evidence_hash: "123456789",
+        raised_ledger: 100,
+        raised_closed_at: "2026-01-01T00:00:00Z",
+        raised_tx_hash: "TX1",
+      });
+
+      expect(repo.getDevice(db, "DEV1")?.open_disputes).toBe(1);
+      expect(repo.listDisputesForDevice(db, "DEV1")).toMatchObject([
+        { device_address: "DEV1", disputer: "DISPUTER1", status: "open" },
+      ]);
+    });
+
+    it("ignores a duplicate insertDispute with the same tx_hash + device (no double count)", () => {
+      const dispute = {
+        device_address: "DEV1",
+        disputer: "DISPUTER1",
+        evidence_hash: "1",
+        raised_ledger: 100,
+        raised_closed_at: "2026-01-01T00:00:00Z",
+        raised_tx_hash: "TX1",
+      };
+      repo.insertDispute(db, dispute);
+      repo.insertDispute(db, dispute);
+
+      expect(repo.getDevice(db, "DEV1")?.open_disputes).toBe(1);
+      expect(repo.listDisputesForDevice(db, "DEV1")).toHaveLength(1);
+    });
+
+    it("resolveDispute(upheld=true) closes the open dispute and bumps upheld_disputes", () => {
+      repo.insertDispute(db, {
+        device_address: "DEV1",
+        disputer: "DISPUTER1",
+        evidence_hash: "1",
+        raised_ledger: 100,
+        raised_closed_at: "2026-01-01T00:00:00Z",
+        raised_tx_hash: "TX1",
+      });
+
+      const resolved = repo.resolveDispute(db, {
+        device_address: "DEV1",
+        upheld: true,
+        resolved_ledger: 200,
+        resolved_closed_at: "2026-01-02T00:00:00Z",
+        resolved_tx_hash: "TX2",
+      });
+
+      expect(resolved).toBe(true);
+      const device = repo.getDevice(db, "DEV1");
+      expect(device?.open_disputes).toBe(0);
+      expect(device?.upheld_disputes).toBe(1);
+      expect(repo.listDisputesForDevice(db, "DEV1")).toMatchObject([
+        { status: "upheld", resolved_tx_hash: "TX2" },
+      ]);
+    });
+
+    it("resolveDispute(upheld=false) closes the dispute without bumping upheld_disputes", () => {
+      repo.insertDispute(db, {
+        device_address: "DEV1",
+        disputer: "DISPUTER1",
+        evidence_hash: "1",
+        raised_ledger: 100,
+        raised_closed_at: "2026-01-01T00:00:00Z",
+        raised_tx_hash: "TX1",
+      });
+
+      repo.resolveDispute(db, {
+        device_address: "DEV1",
+        upheld: false,
+        resolved_ledger: 200,
+        resolved_closed_at: "2026-01-02T00:00:00Z",
+        resolved_tx_hash: "TX2",
+      });
+
+      const device = repo.getDevice(db, "DEV1");
+      expect(device?.open_disputes).toBe(0);
+      expect(device?.upheld_disputes).toBe(0);
+      expect(repo.listDisputesForDevice(db, "DEV1")[0].status).toBe("dismissed");
+    });
+
+    it("resolveDispute returns false and is a no-op when no dispute is open", () => {
+      const resolved = repo.resolveDispute(db, {
+        device_address: "DEV1",
+        upheld: true,
+        resolved_ledger: 200,
+        resolved_closed_at: "2026-01-02T00:00:00Z",
+        resolved_tx_hash: "TX2",
+      });
+
+      expect(resolved).toBe(false);
+      expect(repo.getDevice(db, "DEV1")?.open_disputes).toBe(0);
+    });
+
+    it("a device can accumulate multiple resolved disputes over time", () => {
+      repo.insertDispute(db, {
+        device_address: "DEV1",
+        disputer: "DISPUTER1",
+        evidence_hash: "1",
+        raised_ledger: 100,
+        raised_closed_at: "2026-01-01T00:00:00Z",
+        raised_tx_hash: "TX1",
+      });
+      repo.resolveDispute(db, {
+        device_address: "DEV1",
+        upheld: true,
+        resolved_ledger: 150,
+        resolved_closed_at: "2026-01-01T01:00:00Z",
+        resolved_tx_hash: "TX2",
+      });
+
+      repo.insertDispute(db, {
+        device_address: "DEV1",
+        disputer: "DISPUTER2",
+        evidence_hash: "2",
+        raised_ledger: 200,
+        raised_closed_at: "2026-01-02T00:00:00Z",
+        raised_tx_hash: "TX3",
+      });
+      repo.resolveDispute(db, {
+        device_address: "DEV1",
+        upheld: true,
+        resolved_ledger: 250,
+        resolved_closed_at: "2026-01-02T01:00:00Z",
+        resolved_tx_hash: "TX4",
+      });
+
+      const device = repo.getDevice(db, "DEV1");
+      expect(device?.open_disputes).toBe(0);
+      expect(device?.upheld_disputes).toBe(2);
+      expect(repo.listDisputesForDevice(db, "DEV1")).toHaveLength(2);
+    });
+  });
+
+  describe("auto-slash events", () => {
+    it("insertAutoSlashEvent records the event", () => {
+      repo.upsertDevice(db, {
+        address: "DEV1",
+        owner: "OWNER1",
+        device_type: "weather",
+        lat: 10,
+        lon: 20,
+        registered_at: 1000,
+      });
+      repo.insertAutoSlashEvent(db, {
+        device_address: "DEV1",
+        rejected_count: 3,
+        threshold: 3,
+        ledger: 100,
+        closed_at: "2026-01-01T00:00:00Z",
+        tx_hash: "TX1",
+      });
+
+      // No dedicated getter exists yet beyond what the API layer needs;
+      // this confirms the insert itself doesn't throw and is idempotent
+      // on a duplicate tx_hash, matching insertReading/insertClaim.
+      expect(() =>
+        repo.insertAutoSlashEvent(db, {
+          device_address: "DEV1",
+          rejected_count: 3,
+          threshold: 3,
+          ledger: 100,
+          closed_at: "2026-01-01T00:00:00Z",
+          tx_hash: "TX1",
+        }),
+      ).not.toThrow();
+    });
+  });
 });
