@@ -21,7 +21,7 @@ vi.mock("../src/stellar/registry.js", () => ({
 }));
 
 // Imported after the mock so pollOnce picks up the mocked rpc module.
-const { pollOnce } = await import("../src/ingest/poller.js");
+const { pollOnce, startPolling } = await import("../src/ingest/poller.js");
 
 function b64(scVal: xdr.ScVal): string {
   return scVal.toXDR("base64");
@@ -159,5 +159,61 @@ describe("poller", () => {
 
     const stored = repo.getDevice(db, device);
     expect(stored).toMatchObject({ owner: null, lat: null, lon: null, device_type: "weather" });
+  });
+});
+
+describe("startPolling", () => {
+  beforeEach(() => {
+    fetchEventsMock.mockReset();
+    latestLedgerMock.mockReset();
+  });
+
+  it("stop() prevents any further poll cycle from starting", async () => {
+    latestLedgerMock.mockResolvedValue(5000);
+    fetchEventsMock.mockResolvedValue({ events: [], latestLedger: 5000 });
+
+    const db = openDb(":memory:");
+    const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
+    const handle = startPolling({ db, config }, 10_000);
+
+    await handle.whenIdle();
+    const callsBeforeStop = fetchEventsMock.mock.calls.length;
+
+    handle.stop();
+    // Long enough that a scheduled next tick would have fired if stop()
+    // hadn't cancelled it.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(fetchEventsMock.mock.calls.length).toBe(callsBeforeStop);
+  });
+
+  it("whenIdle() resolves only once the in-flight tick has actually finished", async () => {
+    latestLedgerMock.mockResolvedValue(5000);
+    let resolveFetch!: (value: { events: never[]; latestLedger: number }) => void;
+    fetchEventsMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    const db = openDb(":memory:");
+    const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
+    const handle = startPolling({ db, config }, 10_000);
+
+    let idleResolved = false;
+    const idle = handle.whenIdle().then(() => {
+      idleResolved = true;
+    });
+
+    // The tick is still awaiting fetchEvents — whenIdle must not have
+    // resolved yet.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(idleResolved).toBe(false);
+
+    resolveFetch({ events: [], latestLedger: 5000 });
+    await idle;
+    expect(idleResolved).toBe(true);
+
+    handle.stop();
   });
 });

@@ -129,28 +129,48 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
   }
 }
 
+export interface PollerHandle {
+  /** Stops scheduling further poll cycles. Does not interrupt one already in flight. */
+  stop(): void;
+  /**
+   * Resolves once the currently in-flight poll cycle (if any) finishes.
+   * Call `stop()` first, then await this, before tearing down shared
+   * resources like the DB connection — see `index.ts`'s SIGTERM handler.
+   */
+  whenIdle(): Promise<void>;
+}
+
 /**
  * Runs `pollOnce` forever on `intervalMs`. Errors are logged, not thrown,
  * so one bad RPC call (e.g. a transient network blip) doesn't kill the
- * process. Returns a function that stops the loop.
+ * process. Returns a handle to stop the loop and wait for it to go idle.
  */
-export function startPolling(deps: PollerDeps, intervalMs: number): () => void {
+export function startPolling(deps: PollerDeps, intervalMs: number): PollerHandle {
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
+  let currentTick: Promise<void> = Promise.resolve();
 
   const tick = async () => {
     if (stopped) return;
-    try {
-      await pollOnce(deps);
-    } catch (err) {
-      console.error("[poller] tick failed:", err);
-    }
+    currentTick = (async () => {
+      try {
+        await pollOnce(deps);
+      } catch (err) {
+        console.error("[poller] tick failed:", err);
+      }
+    })();
+    await currentTick;
     if (!stopped) timer = setTimeout(tick, intervalMs);
   };
 
   tick();
-  return () => {
-    stopped = true;
-    if (timer) clearTimeout(timer);
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+    whenIdle() {
+      return currentTick;
+    },
   };
 }
