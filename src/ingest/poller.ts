@@ -11,8 +11,14 @@ export interface PollerDeps {
   config: Config;
 }
 
-/** Polls every configured contract once, ingesting any new events into the DB. */
-export async function pollOnce({ db, config }: PollerDeps): Promise<void> {
+/**
+ * Polls every configured contract once, ingesting any new events into the
+ * DB. Returns how many events were actually applied this cycle (i.e.
+ * recognised by parseEvent and successfully written) — used by
+ * startPolling to track the `lastCycleEventsIngested` metric exposed at
+ * GET /metrics.
+ */
+export async function pollOnce({ db, config }: PollerDeps): Promise<number> {
   const contractIds = [
     config.contracts.deviceRegistry,
     config.contracts.submissionValidator,
@@ -20,12 +26,14 @@ export async function pollOnce({ db, config }: PollerDeps): Promise<void> {
     config.contracts.subscriptionMarket,
   ].filter((id): id is string => Boolean(id));
 
+  let eventsIngested = 0;
   for (const contractId of contractIds) {
-    await pollContract(db, config, contractId);
+    eventsIngested += await pollContract(db, config, contractId);
   }
+  return eventsIngested;
 }
 
-async function pollContract(db: Db, config: Config, contractId: string): Promise<void> {
+async function pollContract(db: Db, config: Config, contractId: string): Promise<number> {
   let startLedger = repo.getCursor(db, contractId);
   if (startLedger === 0) {
     // First time seeing this contract — start from the current ledger
@@ -41,6 +49,7 @@ async function pollContract(db: Db, config: Config, contractId: string): Promise
     startLedger,
   });
 
+  let ingested = 0;
   for (const raw of events) {
     const parsed = parseEvent(raw);
     if (!parsed) {
@@ -48,9 +57,11 @@ async function pollContract(db: Db, config: Config, contractId: string): Promise
       continue;
     }
     await applyEvent(db, config, parsed);
+    ingested += 1;
   }
 
   repo.setCursor(db, contractId, Math.max(newLatest, startLedger));
+  return ingested;
 }
 
 async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<void> {
@@ -171,6 +182,15 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
   }
 }
 
+export interface PollerMetrics {
+  /** Unix ms timestamp of the last poll cycle that completed without throwing, or null if none has yet. */
+  lastSuccessfulPollAt: number | null;
+  /** Resets to 0 on any successful cycle; counts how many cycles in a row have thrown. */
+  consecutiveFailures: number;
+  /** Events applied in the most recently *completed* cycle (success or failure). */
+  lastCycleEventsIngested: number;
+}
+
 export interface PollerHandle {
   /** Stops scheduling further poll cycles. Does not interrupt one already in flight. */
   stop(): void;
@@ -180,6 +200,8 @@ export interface PollerHandle {
    * resources like the DB connection — see `index.ts`'s SIGTERM handler.
    */
   whenIdle(): Promise<void>;
+  /** A snapshot of current poller health — see GET /metrics. */
+  metrics(): PollerMetrics;
 }
 
 /**
@@ -191,13 +213,21 @@ export function startPolling(deps: PollerDeps, intervalMs: number): PollerHandle
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
   let currentTick: Promise<void> = Promise.resolve();
+  const metrics: PollerMetrics = {
+    lastSuccessfulPollAt: null,
+    consecutiveFailures: 0,
+    lastCycleEventsIngested: 0,
+  };
 
   const tick = async () => {
     if (stopped) return;
     currentTick = (async () => {
       try {
-        await pollOnce(deps);
+        metrics.lastCycleEventsIngested = await pollOnce(deps);
+        metrics.lastSuccessfulPollAt = Date.now();
+        metrics.consecutiveFailures = 0;
       } catch (err) {
+        metrics.consecutiveFailures += 1;
         logger.error("poller", "tick failed", serializeError(err));
       }
     })();
@@ -213,6 +243,11 @@ export function startPolling(deps: PollerDeps, intervalMs: number): PollerHandle
     },
     whenIdle() {
       return currentTick;
+    },
+    metrics() {
+      // A fresh object each call — callers get a point-in-time snapshot,
+      // not a live reference they could (even accidentally) mutate.
+      return { ...metrics };
     },
   };
 }
