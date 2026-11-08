@@ -318,4 +318,70 @@ describe("startPolling", () => {
 
     handle.stop();
   });
+
+  it("metrics() starts at a known baseline before any cycle completes", () => {
+    latestLedgerMock.mockResolvedValue(5000);
+    fetchEventsMock.mockReturnValue(new Promise(() => {})); // never resolves
+
+    const db = openDb(":memory:");
+    const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
+    const handle = startPolling({ db, config }, 10_000);
+
+    expect(handle.metrics()).toEqual({
+      lastSuccessfulPollAt: null,
+      consecutiveFailures: 0,
+      lastCycleEventsIngested: 0,
+    });
+
+    handle.stop();
+  });
+
+  it("metrics() reflects a successful cycle's event count and resets failures", async () => {
+    latestLedgerMock.mockResolvedValue(5000);
+    const device = Keypair.random().publicKey();
+    const regEvent: RawEvent = {
+      contractId: "CVALIDATOR",
+      topic: [
+        b64(nativeToScVal("reading", { type: "symbol" })),
+        b64(nativeToScVal(device, { type: "address" })),
+      ],
+      value: map({
+        region_code: nativeToScVal(1, { type: "u32" }),
+        epoch: nativeToScVal(1, { type: "u32" }),
+        value: nativeToScVal(2500, { type: "i32" }),
+        accepted: nativeToScVal(true, { type: "bool" }),
+      }),
+      ledger: 5010,
+      ledgerClosedAt: "2026-01-01T00:00:00Z",
+      txHash: "TX1",
+    };
+    fetchEventsMock.mockResolvedValue({ events: [regEvent], latestLedger: 5010 });
+
+    const db = openDb(":memory:");
+    const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
+    const handle = startPolling({ db, config }, 10_000);
+    await handle.whenIdle();
+
+    const metrics = handle.metrics();
+    expect(metrics.lastCycleEventsIngested).toBe(1);
+    expect(metrics.consecutiveFailures).toBe(0);
+    expect(typeof metrics.lastSuccessfulPollAt).toBe("number");
+
+    handle.stop();
+  });
+
+  it("metrics() counts a failed cycle and leaves lastSuccessfulPollAt unset", async () => {
+    latestLedgerMock.mockRejectedValue(new Error("rpc down"));
+
+    const db = openDb(":memory:");
+    const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
+    const handle = startPolling({ db, config }, 10_000);
+    await handle.whenIdle();
+
+    const metrics = handle.metrics();
+    expect(metrics.consecutiveFailures).toBe(1);
+    expect(metrics.lastSuccessfulPollAt).toBeNull();
+
+    handle.stop();
+  });
 });
