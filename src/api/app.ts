@@ -1,4 +1,5 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
+import rateLimit from "express-rate-limit";
 import type { Db } from "../db/client.js";
 import type { Config } from "../config.js";
 import { devicesRouter } from "./routes/devices.js";
@@ -60,6 +61,43 @@ export function createApp(
     });
     next();
   });
+
+  // Rate limiting and the optional API-key check are both gated on
+  // `config` being supplied — same reasoning as epochs/metrics above.
+  // Without this gate, every test file that calls createApp(db) with no
+  // config (the large majority — see api.test.ts's many requests per
+  // test) would need to worry about tripping a default rate limit it
+  // never asked for.
+  if (config) {
+    app.use(
+      rateLimit({
+        windowMs: config.rateLimit.windowMs,
+        limit: config.rateLimit.max,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: { error: "too many requests, try again later" },
+        // /health is a liveness check a host or monitor may hit far more
+        // often than config.rateLimit.max allows — it should never be
+        // the reason a deployment looks "down".
+        skip: (req) => req.path === "/health",
+      }),
+    );
+
+    if (config.apiKey) {
+      const apiKey = config.apiKey;
+      app.use((req: Request, res: Response, next: NextFunction) => {
+        if (req.path === "/health") {
+          next();
+          return;
+        }
+        if (req.header("X-API-Key") !== apiKey) {
+          res.status(401).json({ error: "missing or invalid X-API-Key" });
+          return;
+        }
+        next();
+      });
+    }
+  }
 
   app.get("/health", (_req, res) => res.json({ ok: true }));
   app.use("/metrics", metricsRouter(db, config, getPollerMetrics));

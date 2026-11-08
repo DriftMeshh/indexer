@@ -23,6 +23,10 @@ function baseConfig(): Config {
     dbPath: ":memory:",
     pollIntervalMs: 5000,
     port: 0,
+    // Generous enough that this file's handful of requests per test never
+    // trips the limiter — rate limiting itself has its own test file.
+    rateLimit: { windowMs: 60_000, max: 1000 },
+    apiKey: undefined,
   };
 }
 
