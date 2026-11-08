@@ -102,6 +102,25 @@ paths:
                 items:
                   $ref: "#/components/schemas/Claim"
 
+  /devices/{address}/disputes:
+    get:
+      summary: List disputes ever raised against a device
+      description: >
+        Ordered newest-first. A dispute stays status=open until a later
+        dispute_resolved event (if any) closes it as upheld or dismissed.
+      operationId: listDeviceDisputes
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      responses:
+        "200":
+          description: This device's disputes (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Dispute"
+
   /regions/{code}/average:
     get:
       summary: Average accepted reading value for a region in an epoch
@@ -287,6 +306,45 @@ components:
         active:
           type: integer
           enum: [0, 1]
+        open_disputes:
+          type: integer
+          description: Currently-open disputes raised against this device
+        upheld_disputes:
+          type: integer
+          description: Lifetime count of disputes resolved as upheld (slashed)
+
+    Dispute:
+      type: object
+      properties:
+        id:
+          type: integer
+        device_address:
+          type: string
+        disputer:
+          type: string
+        evidence_hash:
+          type: string
+          description: Stringified u64
+        status:
+          type: string
+          enum: [open, upheld, dismissed]
+        raised_ledger:
+          type: integer
+        raised_closed_at:
+          type: string
+          format: date-time
+        raised_tx_hash:
+          type: string
+        resolved_ledger:
+          type: integer
+          nullable: true
+        resolved_closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolved_tx_hash:
+          type: string
+          nullable: true
 
     Reading:
       type: object

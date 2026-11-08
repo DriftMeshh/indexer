@@ -10,6 +10,7 @@ Stellar RPC (getEvents) ──poll──▶ parser ──▶ SQLite ──▶ Ex
                                                               │
                                                      /devices, /devices/:a/readings,
                                                      /devices/:a/claims,
+                                                     /devices/:a/disputes,
                                                      /regions/:code/average,
                                                      /readings?region=&epoch=,
                                                      /subscriptions/:a,
@@ -82,7 +83,7 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 96 tests: parser, repository, poller (RPC mocked), API, logger
+npm test                # 117 tests: parser, repository, poller (RPC mocked), API, logger, migration
 npm run typecheck
 npm run build && npm start   # production build
 ```
@@ -197,13 +198,18 @@ to survive both spin-downs and redeploys.
   either the contract's event is enriched or the poller is extended to
   also call `get_device` for newly-seen devices. `devices.owner`/`lat`/
   `lon` are nullable for exactly this reason, not by oversight.
-- **Deactivation events: indexer ready, contract side pending.** The
-  indexer now parses `device-registry`'s `deact_dev` event and flips
-  `devices.active` to 0 (`parse.ts` → `poller.ts` → `setDeviceActive`),
-  but `deactivate_device` on the contract side does not yet emit that
-  event — so until the companion contract change (adding a `DeactDev`
-  `#[contractevent]` whose topics are `["deact_dev", device_address]`)
-  lands, a device deactivated on-chain still shows `active = 1` here.
+- **Dispute/slashing events are ingested.** `device-registry`'s
+  `DeviceDeactivated`/`DisputeRaised`/`DisputeResolved` and
+  `submission-validator`'s `AutoSlashThresholdReached` are all parsed
+  (`parse.ts` → `poller.ts`), with dispute history at `GET
+  /devices/:address/disputes` and running `open_disputes`/
+  `upheld_disputes` counts surfaced on `GET /devices`. Along the way,
+  fixed a real bug: an earlier version of this parser checked for a
+  `deact_dev` topic that never matched any real on-chain event — the
+  `#[contractevent]` macro derives a struct's topic via
+  `heck::ToSnakeCase`, so `DeviceDeactivated` is actually
+  `"device_deactivated"`. Every deactivation was silently dropped until
+  that was corrected.
 - **Cursor seeding, not backfill.** Stellar RPC only retains a short
   window of event history (currently ~7 days). The first time the poller
   sees a contract it has no stored cursor for, it starts from the
@@ -227,9 +233,9 @@ to survive both spin-downs and redeploys.
 
 ## Suggested Stellar Wave issues
 
-**Medium**
-- Emit a `deactivated` event from `device-registry` and consume it here instead of leaving deactivation un-ingestable
-- Add pagination to `GET /devices` and `GET /devices/:address/readings`
+Done: deactivation ingestion, pagination, and dispute/slashing ingestion
+(see "Known limitations" above) — see the repo's open GitHub issues for
+what's still outstanding.
 
 **High**
 - Swap SQLite for Postgres behind the same repository interface, with a migration tool instead of the inline `CREATE TABLE IF NOT EXISTS` schema
