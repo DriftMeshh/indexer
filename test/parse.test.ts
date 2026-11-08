@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Keypair, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import { parseEvent, type RawEvent } from "../src/stellar/parse.js";
 
@@ -260,5 +260,73 @@ describe("parseEvent", () => {
   it("returns null for an event with fewer than two topics", () => {
     const raw = makeRaw({ topic: [symbolTopic("reg_dev")] });
     expect(parseEvent(raw)).toBeNull();
+  });
+});
+
+describe("parseEvent shape-mismatch warnings", () => {
+  const device = Keypair.random().publicKey();
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  it("logs a warning naming the missing field for a reg_dev event with no device_type", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("reg_dev"), addressTopic(device)],
+      value: map({}),
+    });
+
+    expect(parseEvent(raw)).toBeNull();
+    expect(logSpy).toHaveBeenCalledOnce();
+    const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(parsed).toMatchObject({
+      level: "warn",
+      scope: "parse",
+      meta: { eventName: "reg_dev", problems: ["device_type"] },
+    });
+    // The raw, still-encoded XDR is included so a real mismatch can be
+    // root-caused directly from the log line, not just "something's wrong".
+    expect(parsed.meta.topic).toEqual(raw.topic);
+    expect(parsed.meta.value).toEqual(raw.value);
+  });
+
+  it("logs a warning naming the field when it's present but the wrong type", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("reg_dev"), addressTopic(device)],
+      // device_type as a bool instead of the expected symbol/string —
+      // simulates exactly the class of contract-side encoding change
+      // this validation exists to catch.
+      value: map({ device_type: nativeToScVal(true, { type: "bool" }) }),
+    });
+
+    expect(parseEvent(raw)).toBeNull();
+    const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(parsed.meta.problems).toEqual(["device_type"]);
+  });
+
+  it("names every missing field, not just the first, for a multi-field event", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("dispute_raised"), addressTopic(device)],
+      value: map({ disputer: nativeToScVal(device, { type: "address" }) }),
+    });
+
+    expect(parseEvent(raw)).toBeNull();
+    const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(parsed.meta.problems.sort()).toEqual(["evidence_hash", "open_dispute_count"]);
+  });
+
+  it("does not warn for a genuinely unrecognised event name (not a shape mismatch)", () => {
+    const raw = makeRaw({
+      topic: [symbolTopic("some_future_event"), addressTopic(device)],
+      value: map({ anything: nativeToScVal(1, { type: "u32" }) }),
+    });
+
+    expect(parseEvent(raw)).toBeNull();
+    expect(logSpy).not.toHaveBeenCalled();
   });
 });
