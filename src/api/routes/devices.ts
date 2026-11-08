@@ -126,5 +126,17 @@ export function devicesRouter(db: Db): Router {
     res.json(repo.listClaimsForDevice(db, req.params.address));
   });
 
+  /**
+   * GET /devices/:address/disputes
+   *
+   * All disputes ever raised against this device, newest first. Each row
+   * stays status="open" until a later dispute_resolved event (if any)
+   * closes it as "upheld" or "dismissed" — see repository.ts's
+   * resolveDispute for how that matching works.
+   */
+  router.get("/:address/disputes", (req, res) => {
+    res.json(repo.listDisputesForDevice(db, req.params.address));
+  });
+
   return router;
 }
