@@ -38,7 +38,7 @@ if (watchedContracts.length === 0) {
   });
 }
 
-const app = createApp(db, config);
+const app = createApp(db, config, () => poller?.metrics());
 const server = app.listen(config.port, () => {
   logger.info("index", "API listening", { port: config.port });
 });

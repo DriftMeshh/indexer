@@ -6,15 +6,26 @@ import { regionsRouter } from "./routes/regions.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
 import { readingsRouter } from "./routes/readings.js";
 import { epochsRouter } from "./routes/epochs.js";
+import { metricsRouter } from "./routes/metrics.js";
 import { logger, serializeError } from "../logger.js";
+import type { PollerMetrics } from "../ingest/poller.js";
 
 /**
  * `config` is optional so existing callers (and most tests, which only
  * exercise the DB-backed routes) don't need to supply one. Without it,
  * GET /epochs/:epoch always responds 503 — it needs live RPC access,
- * which isn't meaningful against an in-memory test DB anyway.
+ * which isn't meaningful against an in-memory test DB anyway. GET /metrics
+ * still works without `config`, just without the ledger-lag gauges.
+ *
+ * `getPollerMetrics` is a callback (not the metrics themselves) so GET
+ * /metrics always reflects the poller's *current* state — see
+ * routes/metrics.ts for why.
  */
-export function createApp(db: Db, config?: Config): Express {
+export function createApp(
+  db: Db,
+  config?: Config,
+  getPollerMetrics?: () => PollerMetrics | undefined,
+): Express {
   const app = express();
   app.use(express.json());
 
@@ -51,6 +62,7 @@ export function createApp(db: Db, config?: Config): Express {
   });
 
   app.get("/health", (_req, res) => res.json({ ok: true }));
+  app.use("/metrics", metricsRouter(db, config, getPollerMetrics));
 
   app.use("/devices", devicesRouter(db));
   app.use("/regions", regionsRouter(db));
