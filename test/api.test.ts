@@ -135,6 +135,66 @@ describe("API", () => {
     expect(res.body[0]).toMatchObject({ epoch: 7, payout: "175" });
   });
 
+  it("GET /devices/:address/disputes returns an empty array for a device with no disputes", async () => {
+    const res = await request(app).get("/devices/DEV1/disputes");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("GET /devices/:address/disputes returns raised and resolved disputes, newest first", async () => {
+    repo.insertDispute(db, {
+      device_address: "DEV1",
+      disputer: "DISPUTER1",
+      evidence_hash: "1",
+      raised_ledger: 100,
+      raised_closed_at: "2026-01-01T00:00:00Z",
+      raised_tx_hash: "TX_DISPUTE1",
+    });
+    repo.resolveDispute(db, {
+      device_address: "DEV1",
+      upheld: false,
+      resolved_ledger: 150,
+      resolved_closed_at: "2026-01-01T01:00:00Z",
+      resolved_tx_hash: "TX_RESOLVE1",
+    });
+    repo.insertDispute(db, {
+      device_address: "DEV1",
+      disputer: "DISPUTER2",
+      evidence_hash: "2",
+      raised_ledger: 200,
+      raised_closed_at: "2026-01-02T00:00:00Z",
+      raised_tx_hash: "TX_DISPUTE2",
+    });
+
+    const res = await request(app).get("/devices/DEV1/disputes");
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0]).toMatchObject({ status: "open", disputer: "DISPUTER2" });
+    expect(res.body[1]).toMatchObject({ status: "dismissed", disputer: "DISPUTER1" });
+  });
+
+  it("GET /devices surfaces open_disputes/upheld_disputes per device", async () => {
+    repo.insertDispute(db, {
+      device_address: "DEV1",
+      disputer: "DISPUTER1",
+      evidence_hash: "1",
+      raised_ledger: 100,
+      raised_closed_at: "2026-01-01T00:00:00Z",
+      raised_tx_hash: "TX_DISPUTE1",
+    });
+    repo.resolveDispute(db, {
+      device_address: "DEV1",
+      upheld: true,
+      resolved_ledger: 150,
+      resolved_closed_at: "2026-01-01T01:00:00Z",
+      resolved_tx_hash: "TX_RESOLVE1",
+    });
+
+    const res = await request(app).get("/devices");
+    const dev1 = res.body.data.find((d: { address: string }) => d.address === "DEV1");
+    expect(dev1).toMatchObject({ open_disputes: 0, upheld_disputes: 1 });
+  });
+
   it("GET /regions/:code/average computes the region average", async () => {
     const res = await request(app).get("/regions/42/average?epoch=7");
     expect(res.status).toBe(200);
