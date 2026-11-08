@@ -29,6 +29,28 @@ paths:
                     type: boolean
                     example: true
 
+  /metrics:
+    get:
+      summary: Poller and ingest-lag metrics in Prometheus text exposition format
+      description: >
+        Not JSON — `text/plain; version=0.0.4`, scrapeable directly by
+        Prometheus. Reports last_successful_poll_timestamp_seconds,
+        consecutive_poll_failures, last_cycle_events_ingested, and a
+        ledger_lag gauge per configured contract (a live chain-tip read,
+        not cached).
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Prometheus-format metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP driftmesh_indexer_consecutive_poll_failures Consecutive failed poll cycles.
+                  # TYPE driftmesh_indexer_consecutive_poll_failures gauge
+                  driftmesh_indexer_consecutive_poll_failures 0
+
   /devices:
     get:
       summary: List registered devices

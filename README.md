@@ -14,7 +14,8 @@ Stellar RPC (getEvents) ──poll──▶ parser ──▶ SQLite ──▶ Ex
                                                      /regions/:code/average,
                                                      /readings?region=&epoch=,
                                                      /subscriptions/:a,
-                                                     /epochs/:epoch
+                                                     /epochs/:epoch,
+                                                     /metrics
 ```
 
 See [`openapi.yaml`](./openapi.yaml) for the full machine-readable API spec
@@ -83,7 +84,7 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 117 tests: parser, repository, poller (RPC mocked), API, logger, migration
+npm test                # 131 tests: parser, repository, poller (RPC mocked), API, logger, migration, epochs, metrics
 npm run typecheck
 npm run build && npm start   # production build
 ```
