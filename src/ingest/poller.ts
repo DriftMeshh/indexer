@@ -34,7 +34,7 @@ export async function pollOnce({ db, config }: PollerDeps): Promise<number> {
 }
 
 async function pollContract(db: Db, config: Config, contractId: string): Promise<number> {
-  let startLedger = repo.getCursor(db, contractId);
+  let startLedger = await repo.getCursor(db, contractId);
   if (startLedger === 0) {
     // First time seeing this contract — start from the current ledger
     // rather than trying to backfill from genesis. RPC only retains a
@@ -60,14 +60,14 @@ async function pollContract(db: Db, config: Config, contractId: string): Promise
     ingested += 1;
   }
 
-  repo.setCursor(db, contractId, Math.max(newLatest, startLedger));
+  await repo.setCursor(db, contractId, Math.max(newLatest, startLedger));
   return ingested;
 }
 
 async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<void> {
   switch (event.kind) {
     case "device_registered": {
-      repo.upsertDevice(db, {
+      await repo.upsertDevice(db, {
         address: event.device,
         owner: null,
         device_type: event.deviceType,
@@ -88,7 +88,7 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
           event.device,
         );
         if (record) {
-          repo.upsertDevice(db, {
+          await repo.upsertDevice(db, {
             address: event.device,
             owner: record.owner,
             device_type: record.deviceType,
@@ -105,10 +105,10 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
       // The contract flips active -> false on deactivation; mirror that
       // here so a deactivated device stops showing active = 1 immediately,
       // without anything having to poll is_active directly.
-      repo.setDeviceActive(db, event.device, false);
+      await repo.setDeviceActive(db, event.device, false);
       break;
     case "reading":
-      repo.insertReading(db, {
+      await repo.insertReading(db, {
         device_address: event.device,
         device_type: null,
         region_code: event.regionCode,
@@ -121,7 +121,7 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
       });
       break;
     case "claimed":
-      repo.insertClaim(db, {
+      await repo.insertClaim(db, {
         device_address: event.device,
         epoch: event.epoch,
         payout: event.payout.toString(),
@@ -131,7 +131,7 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
       });
       break;
     case "subscribed":
-      repo.upsertSubscription(db, {
+      await repo.upsertSubscription(db, {
         subscriber: event.subscriber,
         periods_last_purchase: event.periods,
         expiry: Number(event.expiry),
@@ -139,7 +139,7 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
       });
       break;
     case "dispute_raised":
-      repo.insertDispute(db, {
+      await repo.insertDispute(db, {
         device_address: event.device,
         disputer: event.disputer,
         evidence_hash: event.evidenceHash.toString(),
@@ -149,7 +149,7 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
       });
       break;
     case "dispute_resolved": {
-      const resolved = repo.resolveDispute(db, {
+      const resolved = await repo.resolveDispute(db, {
         device_address: event.device,
         upheld: event.upheld,
         resolved_ledger: event.ledger,
@@ -166,11 +166,11 @@ async function applyEvent(db: Db, config: Config, event: ParsedEvent): Promise<v
       }
       // The contract's own event already tells us the resulting active
       // state directly (device_active) — no need for a second read.
-      repo.setDeviceActive(db, event.device, event.deviceActive);
+      await repo.setDeviceActive(db, event.device, event.deviceActive);
       break;
     }
     case "auto_slash_threshold_reached":
-      repo.insertAutoSlashEvent(db, {
+      await repo.insertAutoSlashEvent(db, {
         device_address: event.device,
         rejected_count: event.rejectedCount,
         threshold: event.threshold,

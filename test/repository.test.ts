@@ -1,16 +1,21 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { openDb, type Db } from "../src/db/client.js";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
+import { type Db } from "../src/db/client.js";
 import * as repo from "../src/db/repository.js";
+import { createTestDb, closeTestDb } from "./helpers/db.js";
 
 describe("repository", () => {
   let db: Db;
 
-  beforeEach(() => {
-    db = openDb(":memory:");
+  beforeEach(async () => {
+    db = await createTestDb();
   });
 
-  it("upserts a device without clobbering known fields with later nulls", () => {
-    repo.upsertDevice(db, {
+  afterEach(async () => {
+    await closeTestDb(db);
+  });
+
+  it("upserts a device without clobbering known fields with later nulls", async () => {
+    await repo.upsertDevice(db, {
       address: "DEV1",
       owner: "OWNER1",
       device_type: "weather",
@@ -20,7 +25,7 @@ describe("repository", () => {
     });
     // A second event for the same device (e.g. a duplicate ingest) with
     // unknown owner/location shouldn't erase the ones we already have.
-    repo.upsertDevice(db, {
+    await repo.upsertDevice(db, {
       address: "DEV1",
       owner: null,
       device_type: "weather",
@@ -29,12 +34,12 @@ describe("repository", () => {
       registered_at: 1000,
     });
 
-    const device = repo.getDevice(db, "DEV1");
+    const device = await repo.getDevice(db, "DEV1");
     expect(device).toMatchObject({ owner: "OWNER1", lat: 10, lon: 20 });
   });
 
-  it("deactivating a device is reflected in getDevice", () => {
-    repo.upsertDevice(db, {
+  it("deactivating a device is reflected in getDevice", async () => {
+    await repo.upsertDevice(db, {
       address: "DEV1",
       owner: "OWNER1",
       device_type: "weather",
@@ -42,11 +47,11 @@ describe("repository", () => {
       lon: null,
       registered_at: 1000,
     });
-    repo.setDeviceActive(db, "DEV1", false);
-    expect(repo.getDevice(db, "DEV1")?.active).toBe(0);
+    await repo.setDeviceActive(db, "DEV1", false);
+    expect((await repo.getDevice(db, "DEV1"))?.active).toBe(0);
   });
 
-  it("ignores a duplicate reading with the same tx_hash + device", () => {
+  it("ignores a duplicate reading with the same tx_hash + device", async () => {
     const reading = {
       device_address: "DEV1",
       device_type: "weather",
@@ -58,13 +63,13 @@ describe("repository", () => {
       closed_at: "2026-01-01T00:00:00Z",
       tx_hash: "TX1",
     };
-    repo.insertReading(db, reading);
-    repo.insertReading(db, reading); // duplicate ingest, e.g. poller re-running an overlapping window
+    await repo.insertReading(db, reading);
+    await repo.insertReading(db, reading); // duplicate ingest, e.g. poller re-running an overlapping window
 
-    expect(repo.listReadingsForDevice(db, "DEV1").data).toHaveLength(1);
+    expect((await repo.listReadingsForDevice(db, "DEV1")).data).toHaveLength(1);
   });
 
-  it("computes the region average over accepted readings only", () => {
+  it("computes the region average over accepted readings only", async () => {
     const base = {
       device_address: "DEV1",
       device_type: "weather",
@@ -73,22 +78,22 @@ describe("repository", () => {
       ledger: 100,
       closed_at: "2026-01-01T00:00:00Z",
     };
-    repo.insertReading(db, { ...base, value: 2000, accepted: 1, tx_hash: "TX1" });
-    repo.insertReading(db, { ...base, value: 3000, accepted: 1, tx_hash: "TX2" });
-    repo.insertReading(db, { ...base, value: 999999, accepted: 0, tx_hash: "TX3" }); // rejected outlier, excluded
+    await repo.insertReading(db, { ...base, value: 2000, accepted: 1, tx_hash: "TX1" });
+    await repo.insertReading(db, { ...base, value: 3000, accepted: 1, tx_hash: "TX2" });
+    await repo.insertReading(db, { ...base, value: 999999, accepted: 0, tx_hash: "TX3" }); // rejected outlier, excluded
 
-    expect(repo.regionAverage(db, 1, 7)).toBe(2500);
+    expect(await repo.regionAverage(db, 1, 7)).toBe(2500);
   });
 
-  it("round-trips the ingest cursor per contract", () => {
-    expect(repo.getCursor(db, "C1")).toBe(0);
-    repo.setCursor(db, "C1", 500);
-    repo.setCursor(db, "C2", 900);
-    expect(repo.getCursor(db, "C1")).toBe(500);
-    expect(repo.getCursor(db, "C2")).toBe(900);
+  it("round-trips the ingest cursor per contract", async () => {
+    expect(await repo.getCursor(db, "C1")).toBe(0);
+    await repo.setCursor(db, "C1", 500);
+    await repo.setCursor(db, "C2", 900);
+    expect(await repo.getCursor(db, "C1")).toBe(500);
+    expect(await repo.getCursor(db, "C2")).toBe(900);
   });
 
-  it("listReadingsForRegion returns all readings for a region+epoch ordered by ledger DESC", () => {
+  it("listReadingsForRegion returns all readings for a region+epoch ordered by ledger DESC", async () => {
     const base = {
       device_type: "weather",
       region_code: 5,
@@ -96,11 +101,11 @@ describe("repository", () => {
       accepted: 1,
       closed_at: "2026-01-01T00:00:00Z",
     };
-    repo.insertReading(db, { ...base, device_address: "DEV_A", value: 100, ledger: 10, tx_hash: "H1" });
-    repo.insertReading(db, { ...base, device_address: "DEV_B", value: 200, ledger: 20, tx_hash: "H2" });
-    repo.insertReading(db, { ...base, device_address: "DEV_C", value: 300, ledger: 30, tx_hash: "H3" });
+    await repo.insertReading(db, { ...base, device_address: "DEV_A", value: 100, ledger: 10, tx_hash: "H1" });
+    await repo.insertReading(db, { ...base, device_address: "DEV_B", value: 200, ledger: 20, tx_hash: "H2" });
+    await repo.insertReading(db, { ...base, device_address: "DEV_C", value: 300, ledger: 30, tx_hash: "H3" });
 
-    const rows = repo.listReadingsForRegion(db, 5, 3);
+    const rows = await repo.listReadingsForRegion(db, 5, 3);
     expect(rows).toHaveLength(3);
     // Ordered ledger DESC: 30, 20, 10
     expect(rows[0].ledger).toBe(30);
@@ -108,7 +113,7 @@ describe("repository", () => {
     expect(rows[2].ledger).toBe(10);
   });
 
-  it("listReadingsForRegion includes accepted=0 rows (unlike regionAverage)", () => {
+  it("listReadingsForRegion includes accepted=0 rows (unlike regionAverage)", async () => {
     const base = {
       device_address: "DEV1",
       device_type: "weather",
@@ -117,34 +122,34 @@ describe("repository", () => {
       ledger: 50,
       closed_at: "2026-01-01T00:00:00Z",
     };
-    repo.insertReading(db, { ...base, value: 100, accepted: 1, tx_hash: "HA" });
-    repo.insertReading(db, { ...base, value: 999, accepted: 0, tx_hash: "HB", ledger: 51 });
+    await repo.insertReading(db, { ...base, value: 100, accepted: 1, tx_hash: "HA" });
+    await repo.insertReading(db, { ...base, value: 999, accepted: 0, tx_hash: "HB", ledger: 51 });
 
-    const rows = repo.listReadingsForRegion(db, 7, 1);
+    const rows = await repo.listReadingsForRegion(db, 7, 1);
     expect(rows).toHaveLength(2);
     expect(rows.some((r) => r.accepted === 0)).toBe(true);
   });
 
-  it("subscriptions only move forward (a stale/out-of-order event can't roll back expiry)", () => {
-    repo.upsertSubscription(db, {
+  it("subscriptions only move forward (a stale/out-of-order event can't roll back expiry)", async () => {
+    await repo.upsertSubscription(db, {
       subscriber: "SUB1",
       periods_last_purchase: 2,
       expiry: 2000,
       updated_at_ledger: 100,
     });
-    repo.upsertSubscription(db, {
+    await repo.upsertSubscription(db, {
       subscriber: "SUB1",
       periods_last_purchase: 1,
       expiry: 1500,
       updated_at_ledger: 50, // older ledger arriving late
     });
 
-    expect(repo.getSubscription(db, "SUB1")?.expiry).toBe(2000);
+    expect((await repo.getSubscription(db, "SUB1"))?.expiry).toBe(2000);
   });
 
   describe("disputes", () => {
-    beforeEach(() => {
-      repo.upsertDevice(db, {
+    beforeEach(async () => {
+      await repo.upsertDevice(db, {
         address: "DEV1",
         owner: "OWNER1",
         device_type: "weather",
@@ -154,8 +159,8 @@ describe("repository", () => {
       });
     });
 
-    it("insertDispute increments the device's open_disputes count", () => {
-      repo.insertDispute(db, {
+    it("insertDispute increments the device's open_disputes count", async () => {
+      await repo.insertDispute(db, {
         device_address: "DEV1",
         disputer: "DISPUTER1",
         evidence_hash: "123456789",
@@ -164,13 +169,13 @@ describe("repository", () => {
         raised_tx_hash: "TX1",
       });
 
-      expect(repo.getDevice(db, "DEV1")?.open_disputes).toBe(1);
-      expect(repo.listDisputesForDevice(db, "DEV1")).toMatchObject([
+      expect((await repo.getDevice(db, "DEV1"))?.open_disputes).toBe(1);
+      expect(await repo.listDisputesForDevice(db, "DEV1")).toMatchObject([
         { device_address: "DEV1", disputer: "DISPUTER1", status: "open" },
       ]);
     });
 
-    it("ignores a duplicate insertDispute with the same tx_hash + device (no double count)", () => {
+    it("ignores a duplicate insertDispute with the same tx_hash + device (no double count)", async () => {
       const dispute = {
         device_address: "DEV1",
         disputer: "DISPUTER1",
@@ -179,15 +184,15 @@ describe("repository", () => {
         raised_closed_at: "2026-01-01T00:00:00Z",
         raised_tx_hash: "TX1",
       };
-      repo.insertDispute(db, dispute);
-      repo.insertDispute(db, dispute);
+      await repo.insertDispute(db, dispute);
+      await repo.insertDispute(db, dispute);
 
-      expect(repo.getDevice(db, "DEV1")?.open_disputes).toBe(1);
-      expect(repo.listDisputesForDevice(db, "DEV1")).toHaveLength(1);
+      expect((await repo.getDevice(db, "DEV1"))?.open_disputes).toBe(1);
+      expect(await repo.listDisputesForDevice(db, "DEV1")).toHaveLength(1);
     });
 
-    it("resolveDispute(upheld=true) closes the open dispute and bumps upheld_disputes", () => {
-      repo.insertDispute(db, {
+    it("resolveDispute(upheld=true) closes the open dispute and bumps upheld_disputes", async () => {
+      await repo.insertDispute(db, {
         device_address: "DEV1",
         disputer: "DISPUTER1",
         evidence_hash: "1",
@@ -196,7 +201,7 @@ describe("repository", () => {
         raised_tx_hash: "TX1",
       });
 
-      const resolved = repo.resolveDispute(db, {
+      const resolved = await repo.resolveDispute(db, {
         device_address: "DEV1",
         upheld: true,
         resolved_ledger: 200,
@@ -205,16 +210,16 @@ describe("repository", () => {
       });
 
       expect(resolved).toBe(true);
-      const device = repo.getDevice(db, "DEV1");
+      const device = await repo.getDevice(db, "DEV1");
       expect(device?.open_disputes).toBe(0);
       expect(device?.upheld_disputes).toBe(1);
-      expect(repo.listDisputesForDevice(db, "DEV1")).toMatchObject([
+      expect(await repo.listDisputesForDevice(db, "DEV1")).toMatchObject([
         { status: "upheld", resolved_tx_hash: "TX2" },
       ]);
     });
 
-    it("resolveDispute(upheld=false) closes the dispute without bumping upheld_disputes", () => {
-      repo.insertDispute(db, {
+    it("resolveDispute(upheld=false) closes the dispute without bumping upheld_disputes", async () => {
+      await repo.insertDispute(db, {
         device_address: "DEV1",
         disputer: "DISPUTER1",
         evidence_hash: "1",
@@ -223,7 +228,7 @@ describe("repository", () => {
         raised_tx_hash: "TX1",
       });
 
-      repo.resolveDispute(db, {
+      await repo.resolveDispute(db, {
         device_address: "DEV1",
         upheld: false,
         resolved_ledger: 200,
@@ -231,14 +236,14 @@ describe("repository", () => {
         resolved_tx_hash: "TX2",
       });
 
-      const device = repo.getDevice(db, "DEV1");
+      const device = await repo.getDevice(db, "DEV1");
       expect(device?.open_disputes).toBe(0);
       expect(device?.upheld_disputes).toBe(0);
-      expect(repo.listDisputesForDevice(db, "DEV1")[0].status).toBe("dismissed");
+      expect((await repo.listDisputesForDevice(db, "DEV1"))[0].status).toBe("dismissed");
     });
 
-    it("resolveDispute returns false and is a no-op when no dispute is open", () => {
-      const resolved = repo.resolveDispute(db, {
+    it("resolveDispute returns false and is a no-op when no dispute is open", async () => {
+      const resolved = await repo.resolveDispute(db, {
         device_address: "DEV1",
         upheld: true,
         resolved_ledger: 200,
@@ -247,11 +252,11 @@ describe("repository", () => {
       });
 
       expect(resolved).toBe(false);
-      expect(repo.getDevice(db, "DEV1")?.open_disputes).toBe(0);
+      expect((await repo.getDevice(db, "DEV1"))?.open_disputes).toBe(0);
     });
 
-    it("a device can accumulate multiple resolved disputes over time", () => {
-      repo.insertDispute(db, {
+    it("a device can accumulate multiple resolved disputes over time", async () => {
+      await repo.insertDispute(db, {
         device_address: "DEV1",
         disputer: "DISPUTER1",
         evidence_hash: "1",
@@ -259,7 +264,7 @@ describe("repository", () => {
         raised_closed_at: "2026-01-01T00:00:00Z",
         raised_tx_hash: "TX1",
       });
-      repo.resolveDispute(db, {
+      await repo.resolveDispute(db, {
         device_address: "DEV1",
         upheld: true,
         resolved_ledger: 150,
@@ -267,7 +272,7 @@ describe("repository", () => {
         resolved_tx_hash: "TX2",
       });
 
-      repo.insertDispute(db, {
+      await repo.insertDispute(db, {
         device_address: "DEV1",
         disputer: "DISPUTER2",
         evidence_hash: "2",
@@ -275,7 +280,7 @@ describe("repository", () => {
         raised_closed_at: "2026-01-02T00:00:00Z",
         raised_tx_hash: "TX3",
       });
-      repo.resolveDispute(db, {
+      await repo.resolveDispute(db, {
         device_address: "DEV1",
         upheld: true,
         resolved_ledger: 250,
@@ -283,16 +288,16 @@ describe("repository", () => {
         resolved_tx_hash: "TX4",
       });
 
-      const device = repo.getDevice(db, "DEV1");
+      const device = await repo.getDevice(db, "DEV1");
       expect(device?.open_disputes).toBe(0);
       expect(device?.upheld_disputes).toBe(2);
-      expect(repo.listDisputesForDevice(db, "DEV1")).toHaveLength(2);
+      expect(await repo.listDisputesForDevice(db, "DEV1")).toHaveLength(2);
     });
   });
 
   describe("auto-slash events", () => {
-    it("insertAutoSlashEvent records the event", () => {
-      repo.upsertDevice(db, {
+    it("insertAutoSlashEvent records the event", async () => {
+      await repo.upsertDevice(db, {
         address: "DEV1",
         owner: "OWNER1",
         device_type: "weather",
@@ -300,7 +305,7 @@ describe("repository", () => {
         lon: 20,
         registered_at: 1000,
       });
-      repo.insertAutoSlashEvent(db, {
+      await repo.insertAutoSlashEvent(db, {
         device_address: "DEV1",
         rejected_count: 3,
         threshold: 3,
@@ -312,7 +317,7 @@ describe("repository", () => {
       // No dedicated getter exists yet beyond what the API layer needs;
       // this confirms the insert itself doesn't throw and is idempotent
       // on a duplicate tx_hash, matching insertReading/insertClaim.
-      expect(() =>
+      await expect(
         repo.insertAutoSlashEvent(db, {
           device_address: "DEV1",
           rejected_count: 3,
@@ -321,7 +326,7 @@ describe("repository", () => {
           closed_at: "2026-01-01T00:00:00Z",
           tx_hash: "TX1",
         }),
-      ).not.toThrow();
+      ).resolves.not.toThrow();
     });
   });
 });

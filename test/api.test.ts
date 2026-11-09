@@ -1,17 +1,18 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { openDb, type Db } from "../src/db/client.js";
+import { type Db } from "../src/db/client.js";
 import * as repo from "../src/db/repository.js";
 import { createApp } from "../src/api/app.js";
+import { createTestDb, closeTestDb } from "./helpers/db.js";
 
 describe("API", () => {
   let db: Db;
   let app: ReturnType<typeof createApp>;
 
-  beforeEach(() => {
-    db = openDb(":memory:");
+  beforeEach(async () => {
+    db = await createTestDb();
     app = createApp(db);
-    repo.upsertDevice(db, {
+    await repo.upsertDevice(db, {
       address: "DEV1",
       owner: "OWNER1",
       device_type: "weather",
@@ -19,7 +20,7 @@ describe("API", () => {
       lon: 20,
       registered_at: 1000,
     });
-    repo.insertReading(db, {
+    await repo.insertReading(db, {
       device_address: "DEV1",
       device_type: "weather",
       region_code: 42,
@@ -30,7 +31,7 @@ describe("API", () => {
       closed_at: "2026-01-01T00:00:00Z",
       tx_hash: "TX1",
     });
-    repo.insertClaim(db, {
+    await repo.insertClaim(db, {
       device_address: "DEV1",
       epoch: 7,
       payout: "175",
@@ -38,6 +39,10 @@ describe("API", () => {
       closed_at: "2026-01-01T00:01:00Z",
       tx_hash: "TX2",
     });
+  });
+
+  afterEach(async () => {
+    await closeTestDb(db);
   });
 
   it("GET /health", async () => {
@@ -108,14 +113,15 @@ describe("API", () => {
   });
 
   it("GET /devices returns correct total when database is empty", async () => {
-    // Close and reopen an empty DB to test with zero devices
-    const emptyDb = (await import("../src/db/client.js")).openDb(":memory:");
+    // Open a second pool to the same DB (already truncated), but use
+    // the existing empty state by truncating via a fresh createTestDb.
+    const emptyDb = await createTestDb();
     const emptyApp = (await import("../src/api/app.js")).createApp(emptyDb);
     const res = await request(emptyApp).get("/devices");
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual([]);
     expect(res.body.total).toBe(0);
-    emptyDb.close();
+    await closeTestDb(emptyDb);
   });
 
   it("GET /devices/:address/readings returns that device's readings", async () => {
@@ -142,7 +148,7 @@ describe("API", () => {
   });
 
   it("GET /devices/:address/disputes returns raised and resolved disputes, newest first", async () => {
-    repo.insertDispute(db, {
+    await repo.insertDispute(db, {
       device_address: "DEV1",
       disputer: "DISPUTER1",
       evidence_hash: "1",
@@ -150,14 +156,14 @@ describe("API", () => {
       raised_closed_at: "2026-01-01T00:00:00Z",
       raised_tx_hash: "TX_DISPUTE1",
     });
-    repo.resolveDispute(db, {
+    await repo.resolveDispute(db, {
       device_address: "DEV1",
       upheld: false,
       resolved_ledger: 150,
       resolved_closed_at: "2026-01-01T01:00:00Z",
       resolved_tx_hash: "TX_RESOLVE1",
     });
-    repo.insertDispute(db, {
+    await repo.insertDispute(db, {
       device_address: "DEV1",
       disputer: "DISPUTER2",
       evidence_hash: "2",
@@ -174,7 +180,7 @@ describe("API", () => {
   });
 
   it("GET /devices surfaces open_disputes/upheld_disputes per device", async () => {
-    repo.insertDispute(db, {
+    await repo.insertDispute(db, {
       device_address: "DEV1",
       disputer: "DISPUTER1",
       evidence_hash: "1",
@@ -182,7 +188,7 @@ describe("API", () => {
       raised_closed_at: "2026-01-01T00:00:00Z",
       raised_tx_hash: "TX_DISPUTE1",
     });
-    repo.resolveDispute(db, {
+    await repo.resolveDispute(db, {
       device_address: "DEV1",
       upheld: true,
       resolved_ledger: 150,
@@ -221,7 +227,7 @@ describe("API", () => {
   });
 
   it("GET /subscriptions/:address reports active for a non-expired subscription", async () => {
-    repo.upsertSubscription(db, {
+    await repo.upsertSubscription(db, {
       subscriber: "SUB1",
       periods_last_purchase: 1,
       expiry: Math.floor(Date.now() / 1000) + 10_000,
@@ -248,7 +254,7 @@ describe("API", () => {
   });
 
   it("GET /readings returns multiple readings across devices for same region+epoch", async () => {
-    repo.upsertDevice(db, {
+    await repo.upsertDevice(db, {
       address: "DEV2",
       owner: "OWNER2",
       device_type: "weather",
@@ -256,7 +262,7 @@ describe("API", () => {
       lon: 40,
       registered_at: 2000,
     });
-    repo.insertReading(db, {
+    await repo.insertReading(db, {
       device_address: "DEV2",
       device_type: "weather",
       region_code: 42,
@@ -306,7 +312,7 @@ describe("API", () => {
   });
 
   it("GET /readings does not return readings from a different epoch", async () => {
-    repo.insertReading(db, {
+    await repo.insertReading(db, {
       device_address: "DEV1",
       device_type: "weather",
       region_code: 42,
@@ -323,7 +329,7 @@ describe("API", () => {
   });
 
   it("GET /readings does not return readings from a different region", async () => {
-    repo.insertReading(db, {
+    await repo.insertReading(db, {
       device_address: "DEV1",
       device_type: "weather",
       region_code: 99, // different region
@@ -342,7 +348,7 @@ describe("API", () => {
   it("GET /readings includes rejected (accepted=0) readings in results", async () => {
     // Unlike regionAverage which only includes accepted=1, the raw listing
     // returns all readings regardless of accepted status.
-    repo.insertReading(db, {
+    await repo.insertReading(db, {
       device_address: "DEV1",
       device_type: "weather",
       region_code: 42,
@@ -366,28 +372,25 @@ describe("API", () => {
   // ── Error-handling middleware ──────────────────────────────────────────────
 
   it("error-handling middleware returns JSON on unhandled route errors", async () => {
-    // Force a real route handler to throw — querying a closed database —
-    // rather than appending a new route after `app` is already built.
-    // Express only forwards next(err) to error-handling middleware
-    // registered *after* the throwing handler in the stack; a route added
-    // post-hoc here would land after createApp's error handler and never
-    // reach it, so this instead exercises the handler in its real,
-    // already-correct position.
-    db.close();
+    // Force a real route handler to throw — querying a closed pool.
+    await db.end();
     const res = await request(app).get("/devices");
     expect(res.status).toBe(500);
     expect(res.body).toHaveProperty("error");
     expect(typeof res.body.error).toBe("string");
+    // Prevent the afterEach from trying to close an already-ended pool
+    // by replacing it with a no-op sentinel.
+    db = { end: async () => {} } as unknown as Db;
   });
 
   // ── Pagination: GET /devices ───────────────────────────────────────────────
 
   describe("GET /devices pagination", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       // Seed 5 more devices (DEV1 already exists from the outer beforeEach,
       // total will be 6 devices)
       for (let i = 2; i <= 6; i++) {
-        repo.upsertDevice(db, {
+        await repo.upsertDevice(db, {
           address: `DEV${i}`,
           owner: `OWNER${i}`,
           device_type: "weather",
@@ -531,10 +534,10 @@ describe("API", () => {
   // ── Pagination: GET /devices/:address/readings ─────────────────────────────
 
   describe("GET /devices/:address/readings pagination", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       // Seed 5 more readings for DEV1 (1 already exists, total will be 6)
       for (let i = 2; i <= 6; i++) {
-        repo.insertReading(db, {
+        await repo.insertReading(db, {
           device_address: "DEV1",
           device_type: "weather",
           region_code: 42,
@@ -675,7 +678,7 @@ describe("API", () => {
 
     it("returns only readings belonging to the specified device", async () => {
       // Seed a second device with its own reading
-      repo.upsertDevice(db, {
+      await repo.upsertDevice(db, {
         address: "DEV_OTHER",
         owner: "OWNER_OTHER",
         device_type: "weather",
@@ -683,7 +686,7 @@ describe("API", () => {
         lon: 99,
         registered_at: 9000,
       });
-      repo.insertReading(db, {
+      await repo.insertReading(db, {
         device_address: "DEV_OTHER",
         device_type: "weather",
         region_code: 1,

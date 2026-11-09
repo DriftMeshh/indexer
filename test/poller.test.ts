@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { Keypair, nativeToScVal, xdr } from "@stellar/stellar-sdk";
-import { openDb, type Db } from "../src/db/client.js";
+import { type Db } from "../src/db/client.js";
 import * as repo from "../src/db/repository.js";
 import { loadConfig } from "../src/config.js";
 import type { RawEvent } from "../src/stellar/parse.js";
+import { createTestDb, closeTestDb } from "./helpers/db.js";
 
 const { fetchEventsMock, latestLedgerMock, fetchDeviceRecordMock } = vi.hoisted(() => ({
   fetchEventsMock: vi.fn(),
@@ -41,11 +42,15 @@ describe("poller", () => {
   let db: Db;
   const device = Keypair.random().publicKey();
 
-  beforeEach(() => {
-    db = openDb(":memory:");
+  beforeEach(async () => {
+    db = await createTestDb();
     fetchEventsMock.mockReset();
     latestLedgerMock.mockReset();
     fetchDeviceRecordMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await closeTestDb(db);
   });
 
   it("seeds a brand-new contract's cursor from the current ledger, then ingests its events", async () => {
@@ -77,12 +82,12 @@ describe("poller", () => {
     expect(fetchEventsMock).toHaveBeenCalledWith(
       expect.objectContaining({ contractIds: ["CVALIDATOR"], startLedger: 5000 }),
     );
-    expect(repo.listReadingsForDevice(db, device).data).toHaveLength(1);
-    expect(repo.getCursor(db, "CVALIDATOR")).toBe(5010);
+    expect((await repo.listReadingsForDevice(db, device)).data).toHaveLength(1);
+    expect(await repo.getCursor(db, "CVALIDATOR")).toBe(5010);
   });
 
   it("resumes from the stored cursor on a later poll instead of re-seeding from latest ledger", async () => {
-    repo.setCursor(db, "CVALIDATOR", 6000);
+    await repo.setCursor(db, "CVALIDATOR", 6000);
     fetchEventsMock.mockResolvedValue({ events: [], latestLedger: 6500 });
 
     const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
@@ -92,7 +97,7 @@ describe("poller", () => {
     expect(fetchEventsMock).toHaveBeenCalledWith(
       expect.objectContaining({ startLedger: 6000 }),
     );
-    expect(repo.getCursor(db, "CVALIDATOR")).toBe(6500);
+    expect(await repo.getCursor(db, "CVALIDATOR")).toBe(6500);
   });
 
   it("skips contracts that aren't configured", async () => {
@@ -133,7 +138,7 @@ describe("poller", () => {
       "CREGISTRY",
       device,
     );
-    const stored = repo.getDevice(db, device);
+    const stored = await repo.getDevice(db, device);
     expect(stored).toMatchObject({ owner: "GOWNER", lat: 404500, lon: -736900, active: 1 });
   });
 
@@ -157,13 +162,13 @@ describe("poller", () => {
     const config = loadConfig({ DEVICE_REGISTRY_CONTRACT_ID: "CREGISTRY" });
     await pollOnce({ db, config });
 
-    const stored = repo.getDevice(db, device);
+    const stored = await repo.getDevice(db, device);
     expect(stored).toMatchObject({ owner: null, lat: null, lon: null, device_type: "weather" });
   });
 
   it("ingests a dispute_raised event, incrementing the device's open_disputes count", async () => {
     latestLedgerMock.mockResolvedValue(5000);
-    repo.upsertDevice(db, {
+    await repo.upsertDevice(db, {
       address: device,
       owner: null,
       device_type: "weather",
@@ -193,13 +198,13 @@ describe("poller", () => {
     const config = loadConfig({ DEVICE_REGISTRY_CONTRACT_ID: "CREGISTRY" });
     await pollOnce({ db, config });
 
-    expect(repo.getDevice(db, device)?.open_disputes).toBe(1);
-    expect(repo.listDisputesForDevice(db, device)).toMatchObject([{ disputer, status: "open" }]);
+    expect((await repo.getDevice(db, device))?.open_disputes).toBe(1);
+    expect(await repo.listDisputesForDevice(db, device)).toMatchObject([{ disputer, status: "open" }]);
   });
 
   it("ingests a dispute_resolved event and sets the device's active state from it directly", async () => {
     latestLedgerMock.mockResolvedValue(5000);
-    repo.upsertDevice(db, {
+    await repo.upsertDevice(db, {
       address: device,
       owner: null,
       device_type: "weather",
@@ -207,7 +212,7 @@ describe("poller", () => {
       lon: null,
       registered_at: 1000,
     });
-    repo.insertDispute(db, {
+    await repo.insertDispute(db, {
       device_address: device,
       disputer: Keypair.random().publicKey(),
       evidence_hash: "1",
@@ -236,7 +241,7 @@ describe("poller", () => {
     const config = loadConfig({ DEVICE_REGISTRY_CONTRACT_ID: "CREGISTRY" });
     await pollOnce({ db, config });
 
-    const stored = repo.getDevice(db, device);
+    const stored = await repo.getDevice(db, device);
     expect(stored).toMatchObject({ active: 0, open_disputes: 0, upheld_disputes: 1 });
   });
 
@@ -265,16 +270,22 @@ describe("poller", () => {
 });
 
 describe("startPolling", () => {
-  beforeEach(() => {
+  let db: Db;
+
+  beforeEach(async () => {
+    db = await createTestDb();
     fetchEventsMock.mockReset();
     latestLedgerMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await closeTestDb(db);
   });
 
   it("stop() prevents any further poll cycle from starting", async () => {
     latestLedgerMock.mockResolvedValue(5000);
     fetchEventsMock.mockResolvedValue({ events: [], latestLedger: 5000 });
 
-    const db = openDb(":memory:");
     const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
     const handle = startPolling({ db, config }, 10_000);
 
@@ -298,7 +309,6 @@ describe("startPolling", () => {
       }),
     );
 
-    const db = openDb(":memory:");
     const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
     const handle = startPolling({ db, config }, 10_000);
 
@@ -323,7 +333,6 @@ describe("startPolling", () => {
     latestLedgerMock.mockResolvedValue(5000);
     fetchEventsMock.mockReturnValue(new Promise(() => {})); // never resolves
 
-    const db = openDb(":memory:");
     const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
     const handle = startPolling({ db, config }, 10_000);
 
@@ -357,7 +366,6 @@ describe("startPolling", () => {
     };
     fetchEventsMock.mockResolvedValue({ events: [regEvent], latestLedger: 5010 });
 
-    const db = openDb(":memory:");
     const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
     const handle = startPolling({ db, config }, 10_000);
     await handle.whenIdle();
@@ -373,7 +381,6 @@ describe("startPolling", () => {
   it("metrics() counts a failed cycle and leaves lastSuccessfulPollAt unset", async () => {
     latestLedgerMock.mockRejectedValue(new Error("rpc down"));
 
-    const db = openDb(":memory:");
     const config = loadConfig({ SUBMISSION_VALIDATOR_CONTRACT_ID: "CVALIDATOR" });
     const handle = startPolling({ db, config }, 10_000);
     await handle.whenIdle();

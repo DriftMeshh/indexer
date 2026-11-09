@@ -52,37 +52,42 @@ export function devicesRouter(db: Db): Router {
    * Error responses:
    *   400 — limit or offset is present but not a valid non-negative integer
    */
-  router.get("/", (req, res) => {
-    const rawLimit = parseNonNegativeInt(req.query.limit);
-    const rawOffset = parseNonNegativeInt(req.query.offset);
+  router.get("/", async (req, res, next) => {
+    try {
+      const rawLimit = parseNonNegativeInt(req.query.limit);
+      const rawOffset = parseNonNegativeInt(req.query.offset);
 
-    // null means the param was absent — fall back to the sensible defaults.
-    // NaN means the param was present but not a valid number — 400.
-    // Negative means the param was a valid number but < 0 — 400.
-    const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
-    const offset = rawOffset === null ? 0 : rawOffset;
+      const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
+      const offset = rawOffset === null ? 0 : rawOffset;
 
-    if (!Number.isFinite(limit) || limit < 0) {
-      res
-        .status(400)
-        .json({ error: `"limit" must be a non-negative integer (max ${MAX_LIMIT})` });
-      return;
+      if (!Number.isFinite(limit) || limit < 0) {
+        res
+          .status(400)
+          .json({ error: `"limit" must be a non-negative integer (max ${MAX_LIMIT})` });
+        return;
+      }
+      if (!Number.isFinite(offset) || offset < 0) {
+        res.status(400).json({ error: '"offset" must be a non-negative integer' });
+        return;
+      }
+
+      res.json(await repo.listDevices(db, limit, offset));
+    } catch (err) {
+      next(err);
     }
-    if (!Number.isFinite(offset) || offset < 0) {
-      res.status(400).json({ error: '"offset" must be a non-negative integer' });
-      return;
-    }
-
-    res.json(repo.listDevices(db, limit, offset));
   });
 
-  router.get("/:address", (req, res) => {
-    const device = repo.getDevice(db, req.params.address);
-    if (!device) {
-      res.status(404).json({ error: "device not found" });
-      return;
+  router.get("/:address", async (req, res, next) => {
+    try {
+      const device = await repo.getDevice(db, req.params.address);
+      if (!device) {
+        res.status(404).json({ error: "device not found" });
+        return;
+      }
+      res.json(device);
+    } catch (err) {
+      next(err);
     }
-    res.json(device);
   });
 
   /**
@@ -100,30 +105,37 @@ export function devicesRouter(db: Db): Router {
    * Error responses:
    *   400 — limit or offset is present but not a valid non-negative integer
    */
-  router.get("/:address/readings", (req, res) => {
-    const rawLimit = parseNonNegativeInt(req.query.limit);
-    const rawOffset = parseNonNegativeInt(req.query.offset);
+  router.get("/:address/readings", async (req, res, next) => {
+    try {
+      const rawLimit = parseNonNegativeInt(req.query.limit);
+      const rawOffset = parseNonNegativeInt(req.query.offset);
 
-    // null → absent → default; NaN → non-numeric → 400; < 0 → negative → 400
-    const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
-    const offset = rawOffset === null ? 0 : rawOffset;
+      const limit = rawLimit === null ? DEFAULT_LIMIT : rawLimit;
+      const offset = rawOffset === null ? 0 : rawOffset;
 
-    if (!Number.isFinite(limit) || limit < 0) {
-      res
-        .status(400)
-        .json({ error: `"limit" must be a non-negative integer (max ${MAX_LIMIT})` });
-      return;
+      if (!Number.isFinite(limit) || limit < 0) {
+        res
+          .status(400)
+          .json({ error: `"limit" must be a non-negative integer (max ${MAX_LIMIT})` });
+        return;
+      }
+      if (!Number.isFinite(offset) || offset < 0) {
+        res.status(400).json({ error: '"offset" must be a non-negative integer' });
+        return;
+      }
+
+      res.json(await repo.listReadingsForDevice(db, req.params.address, limit, offset));
+    } catch (err) {
+      next(err);
     }
-    if (!Number.isFinite(offset) || offset < 0) {
-      res.status(400).json({ error: '"offset" must be a non-negative integer' });
-      return;
-    }
-
-    res.json(repo.listReadingsForDevice(db, req.params.address, limit, offset));
   });
 
-  router.get("/:address/claims", (req, res) => {
-    res.json(repo.listClaimsForDevice(db, req.params.address));
+  router.get("/:address/claims", async (req, res, next) => {
+    try {
+      res.json(await repo.listClaimsForDevice(db, req.params.address));
+    } catch (err) {
+      next(err);
+    }
   });
 
   /**
@@ -134,8 +146,12 @@ export function devicesRouter(db: Db): Router {
    * closes it as "upheld" or "dismissed" — see repository.ts's
    * resolveDispute for how that matching works.
    */
-  router.get("/:address/disputes", (req, res) => {
-    res.json(repo.listDisputesForDevice(db, req.params.address));
+  router.get("/:address/disputes", async (req, res, next) => {
+    try {
+      res.json(await repo.listDisputesForDevice(db, req.params.address));
+    } catch (err) {
+      next(err);
+    }
   });
 
   return router;

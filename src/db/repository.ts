@@ -94,93 +94,136 @@ export interface SubscriptionRow {
   updated_at_ledger: number;
 }
 
-export function upsertDevice(
+/**
+ * Normalise a row returned by `pg` so that every column whose TypeScript type
+ * is `number` (INTEGER in Postgres) is actually a JS number, not a string.
+ *
+ * `pg` returns all numeric columns as strings by default unless a type parser
+ * is configured globally.  Rather than patching the global type-parser map
+ * (which would affect every pool in the process), we cast selectively per
+ * query helper.  Only columns that are `number` in the row interface need
+ * casting; TEXT columns are already the right type.
+ */
+function toInts<T extends object>(row: Record<string, unknown>, keys: (keyof T)[]): T {
+  const out = { ...row } as Record<string, unknown>;
+  for (const k of keys as string[]) {
+    if (out[k] !== null && out[k] !== undefined) {
+      out[k] = Number(out[k]);
+    }
+  }
+  return out as T;
+}
+
+const DEVICE_INT_COLS: (keyof DeviceRow)[] = [
+  "registered_at", "active", "open_disputes", "upheld_disputes", "lat", "lon",
+];
+const READING_INT_COLS: (keyof ReadingRow)[] = [
+  "id", "region_code", "epoch", "value", "accepted", "ledger",
+];
+const CLAIM_INT_COLS: (keyof ClaimRow)[] = ["id", "epoch", "ledger"];
+const SUBSCRIPTION_INT_COLS: (keyof SubscriptionRow)[] = [
+  "periods_last_purchase", "expiry", "updated_at_ledger",
+];
+const DISPUTE_INT_COLS: (keyof DisputeRow)[] = [
+  "id", "raised_ledger", "resolved_ledger",
+];
+const AUTO_SLASH_INT_COLS: (keyof AutoSlashEventRow)[] = [
+  "id", "rejected_count", "threshold", "ledger",
+];
+
+export async function upsertDevice(
   db: Db,
   // open_disputes/upheld_disputes are owned by the dispute repository
   // functions, never set here — the INSERT relies on their column
   // DEFAULT 0, and the ON CONFLICT branch doesn't touch them at all, so
   // an existing device's counts survive a later registration-event replay.
   row: Omit<DeviceRow, "active" | "open_disputes" | "upheld_disputes"> & { active?: number },
-): void {
-  db.prepare(
+): Promise<void> {
+  const active = row.active ?? 1;
+  await db.query(
     `INSERT INTO devices (address, owner, device_type, lat, lon, registered_at, active)
-     VALUES (@address, @owner, @device_type, @lat, @lon, @registered_at, @active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT(address) DO UPDATE SET
-       owner = COALESCE(excluded.owner, devices.owner),
-       device_type = excluded.device_type,
-       lat = COALESCE(excluded.lat, devices.lat),
-       lon = COALESCE(excluded.lon, devices.lon),
-       active = excluded.active`,
-  ).run({ active: 1, ...row });
+       owner       = COALESCE(EXCLUDED.owner,      devices.owner),
+       device_type = EXCLUDED.device_type,
+       lat         = COALESCE(EXCLUDED.lat,        devices.lat),
+       lon         = COALESCE(EXCLUDED.lon,        devices.lon),
+       active      = EXCLUDED.active`,
+    [row.address, row.owner, row.device_type, row.lat, row.lon, row.registered_at, active],
+  );
 }
 
-export function setDeviceActive(db: Db, address: string, active: boolean): void {
-  db.prepare(`UPDATE devices SET active = ? WHERE address = ?`).run(active ? 1 : 0, address);
+export async function setDeviceActive(db: Db, address: string, active: boolean): Promise<void> {
+  await db.query(`UPDATE devices SET active = $1 WHERE address = $2`, [active ? 1 : 0, address]);
 }
 
-export function listDevices(
+export async function listDevices(
   db: Db,
   limit = DEFAULT_LIMIT,
   offset = 0,
-): PaginatedResult<DeviceRow> {
+): Promise<PaginatedResult<DeviceRow>> {
   const clampedLimit = Math.min(limit, MAX_LIMIT);
-  // COUNT(*) on a table without a WHERE clause is O(1) in SQLite because
-  // the engine reads the row count directly from the database file header.
-  const total = (
-    db.prepare(`SELECT COUNT(*) AS n FROM devices`).get() as { n: number }
-  ).n;
-  const data = db
-    .prepare(`SELECT * FROM devices ORDER BY registered_at DESC LIMIT ? OFFSET ?`)
-    .all(clampedLimit, offset) as DeviceRow[];
+  const [countResult, dataResult] = await Promise.all([
+    db.query<{ n: string }>(`SELECT COUNT(*) AS n FROM devices`),
+    db.query(
+      `SELECT * FROM devices ORDER BY registered_at DESC LIMIT $1 OFFSET $2`,
+      [clampedLimit, offset],
+    ),
+  ]);
+  const total = Number(countResult.rows[0].n);
+  const data = dataResult.rows.map((r) => toInts<DeviceRow>(r, DEVICE_INT_COLS));
   return { data, total, limit: clampedLimit, offset };
 }
 
-export function getDevice(db: Db, address: string): DeviceRow | undefined {
-  return db.prepare(`SELECT * FROM devices WHERE address = ?`).get(address) as
-    | DeviceRow
-    | undefined;
+export async function getDevice(db: Db, address: string): Promise<DeviceRow | undefined> {
+  const result = await db.query(`SELECT * FROM devices WHERE address = $1`, [address]);
+  if (result.rows.length === 0) return undefined;
+  return toInts<DeviceRow>(result.rows[0], DEVICE_INT_COLS);
 }
 
-export function insertReading(db: Db, row: Omit<ReadingRow, "id">): void {
-  db.prepare(
-    `INSERT OR IGNORE INTO readings
+export async function insertReading(db: Db, row: Omit<ReadingRow, "id">): Promise<void> {
+  await db.query(
+    `INSERT INTO readings
        (device_address, device_type, region_code, epoch, value, accepted, ledger, closed_at, tx_hash)
-     VALUES (@device_address, @device_type, @region_code, @epoch, @value, @accepted, @ledger, @closed_at, @tx_hash)`,
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (tx_hash, device_address) DO NOTHING`,
+    [
+      row.device_address, row.device_type, row.region_code, row.epoch,
+      row.value, row.accepted, row.ledger, row.closed_at, row.tx_hash,
+    ],
+  );
 }
 
-export function listReadingsForDevice(
+export async function listReadingsForDevice(
   db: Db,
   address: string,
   limit = DEFAULT_LIMIT,
   offset = 0,
-): PaginatedResult<ReadingRow> {
+): Promise<PaginatedResult<ReadingRow>> {
   const clampedLimit = Math.min(limit, MAX_LIMIT);
-  // Unlike the COUNT(*) in listDevices, this COUNT has a WHERE clause so it
-  // cannot use the O(1) header shortcut. It requires an index scan on
-  // device_address. A future optimisation is to add an index on
-  // (device_address, ledger DESC) which would make both this COUNT and the
-  // main SELECT use the same index efficiently.
-  const total = (
-    db
-      .prepare(`SELECT COUNT(*) AS n FROM readings WHERE device_address = ?`)
-      .get(address) as { n: number }
-  ).n;
-  const data = db
-    .prepare(
-      `SELECT * FROM readings WHERE device_address = ? ORDER BY ledger DESC LIMIT ? OFFSET ?`,
-    )
-    .all(address, clampedLimit, offset) as ReadingRow[];
+  const [countResult, dataResult] = await Promise.all([
+    db.query<{ n: string }>(`SELECT COUNT(*) AS n FROM readings WHERE device_address = $1`, [address]),
+    db.query(
+      `SELECT * FROM readings WHERE device_address = $1 ORDER BY ledger DESC LIMIT $2 OFFSET $3`,
+      [address, clampedLimit, offset],
+    ),
+  ]);
+  const total = Number(countResult.rows[0].n);
+  const data = dataResult.rows.map((r) => toInts<ReadingRow>(r, READING_INT_COLS));
   return { data, total, limit: clampedLimit, offset };
 }
 
-export function regionAverage(db: Db, regionCode: number, epoch: number): number | null {
-  const row = db
-    .prepare(
-      `SELECT AVG(value) as avg FROM readings WHERE region_code = ? AND epoch = ? AND accepted = 1`,
-    )
-    .get(regionCode, epoch) as { avg: number | null };
-  return row.avg;
+export async function regionAverage(
+  db: Db,
+  regionCode: number,
+  epoch: number,
+): Promise<number | null> {
+  const result = await db.query<{ avg: string | null }>(
+    `SELECT AVG(value) as avg FROM readings WHERE region_code = $1 AND epoch = $2 AND accepted = 1`,
+    [regionCode, epoch],
+  );
+  const avg = result.rows[0]?.avg;
+  return avg === null || avg === undefined ? null : Number(avg);
 }
 
 /**
@@ -191,66 +234,79 @@ export function regionAverage(db: Db, regionCode: number, epoch: number): number
  * so the consumer can decide which subset matters to them. The existing
  * regionAverage only counts accepted=1 rows because an average of rejected
  * readings is meaningless; raw listing has no such restriction.
- *
- * Ordering by ledger DESC matches listReadingsForDevice, keeping the
- * collection ordering consistent across both "per device" and "per region"
- * reading queries.
  */
-export function listReadingsForRegion(
+export async function listReadingsForRegion(
   db: Db,
   regionCode: number,
   epoch: number,
-): ReadingRow[] {
-  return db
-    .prepare(
-      `SELECT * FROM readings WHERE region_code = ? AND epoch = ? ORDER BY ledger DESC`,
-    )
-    .all(regionCode, epoch) as ReadingRow[];
+): Promise<ReadingRow[]> {
+  const result = await db.query(
+    `SELECT * FROM readings WHERE region_code = $1 AND epoch = $2 ORDER BY ledger DESC`,
+    [regionCode, epoch],
+  );
+  return result.rows.map((r) => toInts<ReadingRow>(r, READING_INT_COLS));
 }
 
-export function insertClaim(db: Db, row: Omit<ClaimRow, "id">): void {
-  db.prepare(
-    `INSERT OR IGNORE INTO claims (device_address, epoch, payout, ledger, closed_at, tx_hash)
-     VALUES (@device_address, @epoch, @payout, @ledger, @closed_at, @tx_hash)`,
-  ).run(row);
+export async function insertClaim(db: Db, row: Omit<ClaimRow, "id">): Promise<void> {
+  await db.query(
+    `INSERT INTO claims (device_address, epoch, payout, ledger, closed_at, tx_hash)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (device_address, epoch) DO NOTHING`,
+    [row.device_address, row.epoch, row.payout, row.ledger, row.closed_at, row.tx_hash],
+  );
 }
 
-export function listClaimsForDevice(db: Db, address: string): ClaimRow[] {
-  return db
-    .prepare(`SELECT * FROM claims WHERE device_address = ? ORDER BY epoch DESC`)
-    .all(address) as ClaimRow[];
+export async function listClaimsForDevice(db: Db, address: string): Promise<ClaimRow[]> {
+  const result = await db.query(
+    `SELECT * FROM claims WHERE device_address = $1 ORDER BY epoch DESC`,
+    [address],
+  );
+  return result.rows.map((r) => toInts<ClaimRow>(r, CLAIM_INT_COLS));
 }
 
-export function upsertSubscription(db: Db, row: SubscriptionRow): void {
-  db.prepare(
+export async function upsertSubscription(db: Db, row: SubscriptionRow): Promise<void> {
+  await db.query(
     `INSERT INTO subscriptions (subscriber, periods_last_purchase, expiry, updated_at_ledger)
-     VALUES (@subscriber, @periods_last_purchase, @expiry, @updated_at_ledger)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT(subscriber) DO UPDATE SET
-       periods_last_purchase = excluded.periods_last_purchase,
-       expiry = excluded.expiry,
-       updated_at_ledger = excluded.updated_at_ledger
-     WHERE excluded.updated_at_ledger >= subscriptions.updated_at_ledger`,
-  ).run(row);
+       periods_last_purchase = EXCLUDED.periods_last_purchase,
+       expiry                = EXCLUDED.expiry,
+       updated_at_ledger     = EXCLUDED.updated_at_ledger
+     WHERE EXCLUDED.updated_at_ledger >= subscriptions.updated_at_ledger`,
+    [row.subscriber, row.periods_last_purchase, row.expiry, row.updated_at_ledger],
+  );
 }
 
-export function getSubscription(db: Db, subscriber: string): SubscriptionRow | undefined {
-  return db.prepare(`SELECT * FROM subscriptions WHERE subscriber = ?`).get(subscriber) as
-    | SubscriptionRow
-    | undefined;
+export async function getSubscription(
+  db: Db,
+  subscriber: string,
+): Promise<SubscriptionRow | undefined> {
+  const result = await db.query(
+    `SELECT * FROM subscriptions WHERE subscriber = $1`,
+    [subscriber],
+  );
+  if (result.rows.length === 0) return undefined;
+  return toInts<SubscriptionRow>(result.rows[0], SUBSCRIPTION_INT_COLS);
 }
 
-export function getCursor(db: Db, contractId: string): number {
-  const row = db
-    .prepare(`SELECT last_ledger FROM ingest_cursor WHERE contract_id = ?`)
-    .get(contractId) as { last_ledger: number } | undefined;
-  return row?.last_ledger ?? 0;
+export async function getCursor(db: Db, contractId: string): Promise<number> {
+  const result = await db.query<{ last_ledger: string }>(
+    `SELECT last_ledger FROM ingest_cursor WHERE contract_id = $1`,
+    [contractId],
+  );
+  return result.rows.length > 0 ? Number(result.rows[0].last_ledger) : 0;
 }
 
-export function setCursor(db: Db, contractId: string, lastLedger: number): void {
-  db.prepare(
-    `INSERT INTO ingest_cursor (contract_id, last_ledger) VALUES (?, ?)
-     ON CONFLICT(contract_id) DO UPDATE SET last_ledger = excluded.last_ledger`,
-  ).run(contractId, lastLedger);
+export async function setCursor(
+  db: Db,
+  contractId: string,
+  lastLedger: number,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO ingest_cursor (contract_id, last_ledger) VALUES ($1, $2)
+     ON CONFLICT(contract_id) DO UPDATE SET last_ledger = EXCLUDED.last_ledger`,
+    [contractId, lastLedger],
+  );
 }
 
 export interface DisputeRow {
@@ -268,7 +324,7 @@ export interface DisputeRow {
 }
 
 /** Inserts a new open dispute and bumps the device's denormalized open_disputes count. */
-export function insertDispute(
+export async function insertDispute(
   db: Db,
   row: {
     device_address: string;
@@ -278,21 +334,36 @@ export function insertDispute(
     raised_closed_at: string;
     raised_tx_hash: string;
   },
-): void {
-  const result = db
-    .prepare(
-      `INSERT OR IGNORE INTO disputes
+): Promise<void> {
+  // Use a transaction to keep the INSERT and the counter UPDATE atomic.
+  // INSERT ... ON CONFLICT DO NOTHING returns 0 rows affected on a
+  // duplicate (same pattern as insertReading / insertClaim) — we only
+  // bump the counter for a genuinely new row.
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(
+      `INSERT INTO disputes
          (device_address, disputer, evidence_hash, raised_ledger, raised_closed_at, raised_tx_hash)
-       VALUES (@device_address, @disputer, @evidence_hash, @raised_ledger, @raised_closed_at, @raised_tx_hash)`,
-    )
-    .run(row);
-  // INSERT OR IGNORE silently no-ops on a duplicate (tx_hash, device_address)
-  // — a re-ingested overlapping poll window, same pattern as insertReading.
-  // Only bump the count for a genuinely new row.
-  if (result.changes > 0) {
-    db.prepare(`UPDATE devices SET open_disputes = open_disputes + 1 WHERE address = ?`).run(
-      row.device_address,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (raised_tx_hash, device_address) DO NOTHING`,
+      [
+        row.device_address, row.disputer, row.evidence_hash,
+        row.raised_ledger, row.raised_closed_at, row.raised_tx_hash,
+      ],
     );
+    if (result.rowCount && result.rowCount > 0) {
+      await client.query(
+        `UPDATE devices SET open_disputes = open_disputes + 1 WHERE address = $1`,
+        [row.device_address],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
@@ -306,7 +377,7 @@ export function insertDispute(
  * logged by the caller and otherwise a safe no-op — there's nothing to
  * update.
  */
-export function resolveDispute(
+export async function resolveDispute(
   db: Db,
   row: {
     device_address: string;
@@ -315,35 +386,62 @@ export function resolveDispute(
     resolved_closed_at: string;
     resolved_tx_hash: string;
   },
-): boolean {
-  const open = db
-    .prepare(
-      `SELECT id FROM disputes WHERE device_address = ? AND status = 'open'
+): Promise<boolean> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    const openResult = await client.query<{ id: number }>(
+      `SELECT id FROM disputes WHERE device_address = $1 AND status = 'open'
        ORDER BY raised_ledger DESC LIMIT 1`,
-    )
-    .get(row.device_address) as { id: number } | undefined;
-  if (!open) return false;
-
-  db.prepare(
-    `UPDATE disputes SET status = ?, resolved_ledger = ?, resolved_closed_at = ?, resolved_tx_hash = ?
-     WHERE id = ?`,
-  ).run(row.upheld ? "upheld" : "dismissed", row.resolved_ledger, row.resolved_closed_at, row.resolved_tx_hash, open.id);
-
-  db.prepare(`UPDATE devices SET open_disputes = MAX(open_disputes - 1, 0) WHERE address = ?`).run(
-    row.device_address,
-  );
-  if (row.upheld) {
-    db.prepare(`UPDATE devices SET upheld_disputes = upheld_disputes + 1 WHERE address = ?`).run(
-      row.device_address,
+      [row.device_address],
     );
+    if (openResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+
+    const openId = openResult.rows[0].id;
+    const newStatus = row.upheld ? "upheld" : "dismissed";
+
+    await client.query(
+      `UPDATE disputes
+       SET status = $1, resolved_ledger = $2, resolved_closed_at = $3, resolved_tx_hash = $4
+       WHERE id = $5`,
+      [newStatus, row.resolved_ledger, row.resolved_closed_at, row.resolved_tx_hash, openId],
+    );
+
+    await client.query(
+      `UPDATE devices SET open_disputes = GREATEST(open_disputes - 1, 0) WHERE address = $1`,
+      [row.device_address],
+    );
+
+    if (row.upheld) {
+      await client.query(
+        `UPDATE devices SET upheld_disputes = upheld_disputes + 1 WHERE address = $1`,
+        [row.device_address],
+      );
+    }
+
+    await client.query("COMMIT");
+    return true;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
-  return true;
 }
 
-export function listDisputesForDevice(db: Db, address: string): DisputeRow[] {
-  return db
-    .prepare(`SELECT * FROM disputes WHERE device_address = ? ORDER BY raised_ledger DESC`)
-    .all(address) as DisputeRow[];
+export async function listDisputesForDevice(
+  db: Db,
+  address: string,
+): Promise<DisputeRow[]> {
+  const result = await db.query(
+    `SELECT * FROM disputes WHERE device_address = $1 ORDER BY raised_ledger DESC`,
+    [address],
+  );
+  return result.rows.map((r) => toInts<DisputeRow>(r, DISPUTE_INT_COLS));
 }
 
 export interface AutoSlashEventRow {
@@ -356,10 +454,15 @@ export interface AutoSlashEventRow {
   tx_hash: string;
 }
 
-export function insertAutoSlashEvent(db: Db, row: Omit<AutoSlashEventRow, "id">): void {
-  db.prepare(
-    `INSERT OR IGNORE INTO auto_slash_events
+export async function insertAutoSlashEvent(
+  db: Db,
+  row: Omit<AutoSlashEventRow, "id">,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO auto_slash_events
        (device_address, rejected_count, threshold, ledger, closed_at, tx_hash)
-     VALUES (@device_address, @rejected_count, @threshold, @ledger, @closed_at, @tx_hash)`,
-  ).run(row);
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (tx_hash, device_address) DO NOTHING`,
+    [row.device_address, row.rejected_count, row.threshold, row.ledger, row.closed_at, row.tx_hash],
+  );
 }

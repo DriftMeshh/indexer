@@ -1,12 +1,12 @@
 # DriftMesh — Indexer
 
 The backend: polls Stellar RPC for events from the four `contracts` repo
-Soroban contracts, stores them in SQLite, and serves them over a small
+Soroban contracts, stores them in **PostgreSQL**, and serves them over a small
 REST API that `app` (the frontend) and any third-party data consumer
 reads from.
 
 ```
-Stellar RPC (getEvents) ──poll──▶ parser ──▶ SQLite ──▶ Express API
+Stellar RPC (getEvents) ──poll──▶ parser ──▶ PostgreSQL ──▶ Express API
                                                               │
                                                      /devices, /devices/:a/readings,
                                                      /devices/:a/claims,
@@ -67,9 +67,22 @@ subscriber's access still active".
 
 ```bash
 npm install
-cp .env.example .env   # fill in the contract IDs from `stellar contract deploy`
-npm run dev             # tsx watch — polls RPC + serves the API
+cp .env.example .env   # fill in DATABASE_URL and contract IDs
+
+# Start Postgres (Docker is the easiest path for local dev):
+docker run --rm \
+  -e POSTGRES_USER=driftmesh \
+  -e POSTGRES_PASSWORD=driftmesh \
+  -e POSTGRES_DB=driftmesh \
+  -p 5432:5432 \
+  postgres:16
+
+npm run dev             # tsx watch — runs migrations, polls RPC + serves the API
 ```
+
+Migrations are applied automatically on startup via `node-pg-migrate`
+(the `migrations/` directory). The migration table is `pgmigrations`.
+To run migrations manually (e.g. in a deploy job): `npm run migrate`.
 
 Without contract IDs set, the API still boots and serves an empty
 dataset (useful for frontend development before contracts are deployed) —
@@ -84,7 +97,9 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 131 tests: parser, repository, poller (RPC mocked), API, logger, migration, epochs, metrics
+# Tests require a running Postgres instance:
+TEST_DATABASE_URL=postgresql://driftmesh:driftmesh@127.0.0.1:5432/driftmesh \
+  npm test              # 132 tests: parser, repository, poller (RPC mocked), API, logger, migration, epochs, metrics
 npm run typecheck
 npm run build && npm start   # production build
 ```
@@ -219,10 +234,12 @@ to survive both spin-downs and redeploys.
   real backfill would require running Galexie or using a third-party
   indexer, same constraint the wider Stellar ecosystem is dealing with
   (see the `contracts` repo's research notes on the Horizon→RPC gap).
-- **Single-process SQLite.** Fine for one indexer instance; swapping to
+- **Single-process SQLite.** ~~Fine for one indexer instance; swapping to
   Postgres for multi-instance/production use is a drop-in-shaped change
   (the repository layer is the only place that touches SQL) but hasn't
-  been done.
+  been done.~~ **Resolved:** the backend is now PostgreSQL with
+  `node-pg-migrate` managing the schema (see `migrations/`). Supports
+  multi-instance deployments, managed backups, and replication.
 - **`GET /readings` has no pagination.** Returns all readings for a
   region+epoch in one response. For a high-volume deployment this could
   become large; adding a `limit`/`offset` query param would follow the
@@ -239,5 +256,5 @@ Done: deactivation ingestion, pagination, and dispute/slashing ingestion
 what's still outstanding.
 
 **High**
-- Swap SQLite for Postgres behind the same repository interface, with a migration tool instead of the inline `CREATE TABLE IF NOT EXISTS` schema
+- ~~Swap SQLite for Postgres behind the same repository interface, with a migration tool instead of the inline `CREATE TABLE IF NOT EXISTS` schema~~ **Done — see `migrations/` and `src/db/`.**
 - Replace fixed-interval polling with Soroban RPC's event streaming once/if it becomes available, or build a short-poll + backoff strategy that's kinder to RPC rate limits
