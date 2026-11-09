@@ -102,7 +102,7 @@ export function createApp(
   app.get("/health", (_req, res) => res.json({ ok: true }));
   app.use("/metrics", metricsRouter(db, config, getPollerMetrics));
 
-  app.use("/devices", devicesRouter(db));
+  app.use("/devices", devicesRouter(db, config));
   app.use("/regions", regionsRouter(db));
   app.use("/subscriptions", subscriptionsRouter(db));
   app.use("/readings", readingsRouter(db));
