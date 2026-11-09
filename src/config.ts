@@ -10,6 +10,22 @@ export interface Config {
   databaseUrl: string;
   pollIntervalMs: number;
   port: number;
+  rateLimit: {
+    windowMs: number;
+    max: number;
+  };
+  /** When set, every request must carry this value in X-API-Key. Unset (the default) means no auth — fine for local/demo use. */
+  apiKey: string | undefined;
+  /** Horizon (not Soroban RPC) — trustlines are classic-Stellar account state, which only Horizon exposes. */
+  horizonUrl: string;
+  /**
+   * The reward asset's classic code+issuer, used to check whether a
+   * device holds a trustline to it (see routes/devices.ts's payoutReady
+   * field). Not derivable from `contracts.paymentStreamer` alone without
+   * an extra contract read, so it's its own pair of env vars — these are
+   * deployment-time constants anyway (the asset doesn't change).
+   */
+  rewardAsset: { code: string; issuer: string } | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -28,6 +44,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     // PORT is the common convention (Render, Railway); SERVER_PORT is
     // Bot-Hosting.net's — support whichever the host injects.
     port: Number(env.PORT ?? env.SERVER_PORT ?? 3001),
+    rateLimit: {
+      // 100 requests/minute per IP is generous for a single frontend's
+      // normal polling traffic while still bounding a runaway/abusive
+      // client — tune via env vars for a specific deployment's needs.
+      windowMs: Number(env.RATE_LIMIT_WINDOW_MS ?? 60_000),
+      max: Number(env.RATE_LIMIT_MAX ?? 100),
+    },
+    apiKey: env.API_KEY,
+    horizonUrl: env.HORIZON_URL ?? "https://horizon-testnet.stellar.org",
+    rewardAsset:
+      env.REWARD_ASSET_CODE && env.REWARD_ASSET_ISSUER
+        ? { code: env.REWARD_ASSET_CODE, issuer: env.REWARD_ASSET_ISSUER }
+        : undefined,
   };
 }
 

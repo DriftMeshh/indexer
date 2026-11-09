@@ -22,7 +22,7 @@
     "@stellar/stellar-sdk": "^13.1.0",
     "device-registry": "*",
     "express": "^4.21.1",
-    "node-pg-migrate": "^9.0.0",
+    "express-rate-limit": "^8.7.3",
     "payment-streamer": "*",
     "pg": "^8.23.1",
     "submission-validator": "*"

@@ -1,7 +1,9 @@
 import { Router } from "express";
 import type { Db } from "../../db/client.js";
+import type { Config } from "../../config.js";
 import * as repo from "../../db/repository.js";
 import { DEFAULT_LIMIT, MAX_LIMIT } from "../../db/repository.js";
+import { fetchPayoutReadiness } from "../../stellar/horizon.js";
 
 // Re-export so external modules (e.g. integration tests) can reference the
 // pagination constants without importing directly from the repository layer.
@@ -34,7 +36,7 @@ function parseNonNegativeInt(raw: unknown): number | null {
   return Math.trunc(n);
 }
 
-export function devicesRouter(db: Db): Router {
+export function devicesRouter(db: Db, config?: Config): Router {
   const router = Router();
 
   /**
@@ -77,17 +79,33 @@ export function devicesRouter(db: Db): Router {
     }
   });
 
-  router.get("/:address", async (req, res, next) => {
-    try {
-      const device = await repo.getDevice(db, req.params.address);
-      if (!device) {
-        res.status(404).json({ error: "device not found" });
-        return;
-      }
-      res.json(device);
-    } catch (err) {
-      next(err);
+  /**
+   * GET /devices/:address
+   *
+   * `payoutReady` is included only when the deployment configures
+   * HORIZON_URL + REWARD_ASSET_CODE/REWARD_ASSET_ISSUER — omitted (not
+   * `null`) otherwise, so a consumer can tell "not configured" apart from
+   * "looked it up and don't know" at the JSON level: `true`/`false` mean
+   * a real answer, `null` means the Horizon lookup itself failed, and a
+   * missing field means this deployment doesn't check trustlines at all.
+   */
+  router.get("/:address", async (req, res) => {
+    const device = repo.getDevice(db, req.params.address);
+    if (!device) {
+      res.status(404).json({ error: "device not found" });
+      return;
     }
+
+    if (config?.rewardAsset) {
+      const payoutReady = await fetchPayoutReadiness(
+        config.horizonUrl,
+        req.params.address,
+        config.rewardAsset,
+      );
+      res.json({ ...device, payoutReady });
+      return;
+    }
+    res.json(device);
   });
 
   /**
