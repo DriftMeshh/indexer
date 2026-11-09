@@ -14,22 +14,23 @@
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "npm run build --workspaces --if-present && tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
+    "migrate": "node-pg-migrate up --migrations-dir migrations --database-url-var DATABASE_URL",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.1.0",
-    "better-sqlite3": "^11.7.0",
     "device-registry": "*",
     "express": "^4.21.1",
     "express-rate-limit": "^8.7.3",
     "payment-streamer": "*",
+    "pg": "^8.23.1",
     "submission-validator": "*"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.11",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.1",
+    "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.2",
     "supertest": "^7.0.0",
     "tsx": "^4.19.2",
@@ -37,7 +38,6 @@
     "vitest": "^2.1.8"
   },
   "allowScripts": {
-    "better-sqlite3@11.10.0": true,
     "esbuild@0.28.2": true,
     "esbuild@0.21.5": true
   }

@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { openDb, type Db } from "../src/db/client.js";
+import { type Db } from "../src/db/client.js";
 import * as repo from "../src/db/repository.js";
 import { createApp } from "../src/api/app.js";
 import type { Config } from "../src/config.js";
 import type { PollerMetrics } from "../src/ingest/poller.js";
+import { createTestDb, closeTestDb } from "./helpers/db.js";
 
 const { latestLedgerMock } = vi.hoisted(() => ({ latestLedgerMock: vi.fn() }));
 
@@ -20,7 +21,7 @@ function baseConfig(): Config {
       paymentStreamer: undefined,
       subscriptionMarket: undefined,
     },
-    dbPath: ":memory:",
+    databaseUrl: "postgresql://driftmesh:driftmesh@127.0.0.1:5432/driftmesh",
     pollIntervalMs: 5000,
     port: 0,
     // Generous enough that this file's handful of requests per test never
@@ -35,9 +36,13 @@ function baseConfig(): Config {
 describe("GET /metrics", () => {
   let db: Db;
 
-  beforeEach(() => {
-    db = openDb(":memory:");
+  beforeEach(async () => {
+    db = await createTestDb();
     latestLedgerMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await closeTestDb(db);
   });
 
   it("returns Prometheus text exposition format with Content-Type text/plain", async () => {
@@ -78,8 +83,8 @@ describe("GET /metrics", () => {
 
   it("reports ledger_lag per configured contract as chain tip minus stored cursor", async () => {
     latestLedgerMock.mockResolvedValue(5100);
-    repo.setCursor(db, "CREGISTRY", 5000);
-    repo.setCursor(db, "CVALIDATOR", 5080);
+    await repo.setCursor(db, "CREGISTRY", 5000);
+    await repo.setCursor(db, "CVALIDATOR", 5080);
 
     const app = createApp(db, baseConfig());
     const res = await request(app).get("/metrics");

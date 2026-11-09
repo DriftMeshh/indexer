@@ -25,31 +25,35 @@ import * as repo from "../../db/repository.js";
 export function readingsRouter(db: Db): Router {
   const router = Router();
 
-  router.get("/", (req, res) => {
-    const region = Number(req.query.region);
-    const epoch = Number(req.query.epoch);
+  router.get("/", async (req, res, next) => {
+    try {
+      const region = Number(req.query.region);
+      const epoch = Number(req.query.epoch);
 
-    // Number(undefined) === NaN and Number("abc") === NaN, both caught by
-    // !isFinite. Number("") === 0 which IS finite — that's intentional:
-    // region=0 and epoch=0 are valid filter values (a region code or epoch
-    // of zero is unusual but not impossible in the contract's domain).
-    if (!Number.isFinite(region) || !Number.isFinite(epoch)) {
-      const missing: string[] = [];
-      if (!Number.isFinite(region)) missing.push("?region=");
-      if (!Number.isFinite(epoch)) missing.push("?epoch=");
-      res
-        .status(400)
-        .json({
-          error: `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} required and must be a number`,
-        });
-      return;
+      // Number(undefined) === NaN and Number("abc") === NaN, both caught by
+      // !isFinite. Number("") === 0 which IS finite — that's intentional:
+      // region=0 and epoch=0 are valid filter values (a region code or epoch
+      // of zero is unusual but not impossible in the contract's domain).
+      if (!Number.isFinite(region) || !Number.isFinite(epoch)) {
+        const missing: string[] = [];
+        if (!Number.isFinite(region)) missing.push("?region=");
+        if (!Number.isFinite(epoch)) missing.push("?epoch=");
+        res
+          .status(400)
+          .json({
+            error: `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} required and must be a number`,
+          });
+        return;
+      }
+
+      const readings = await repo.listReadingsForRegion(db, region, epoch);
+      // Always returns an array — empty when no readings exist for the
+      // given region+epoch combination. 404 would be wrong here because
+      // the absence of readings is a valid state, not a missing resource.
+      res.json(readings);
+    } catch (err) {
+      next(err);
     }
-
-    const readings = repo.listReadingsForRegion(db, region, epoch);
-    // Always returns an array — empty when no readings exist for the
-    // given region+epoch combination. 404 would be wrong here because
-    // the absence of readings is a valid state, not a missing resource.
-    res.json(readings);
   });
 
   return router;

@@ -7,7 +7,7 @@ export interface Config {
     paymentStreamer: string | undefined;
     subscriptionMarket: string | undefined;
   };
-  dbPath: string;
+  databaseUrl: string;
   pollIntervalMs: number;
   port: number;
   rateLimit: {
@@ -38,7 +38,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       paymentStreamer: env.PAYMENT_STREAMER_CONTRACT_ID,
       subscriptionMarket: env.SUBSCRIPTION_MARKET_CONTRACT_ID,
     },
-    dbPath: env.DB_PATH ?? "./data/driftmesh.sqlite",
+    databaseUrl:
+      env.DATABASE_URL ?? "postgresql://driftmesh:driftmesh@127.0.0.1:5432/driftmesh",
     pollIntervalMs: Number(env.POLL_INTERVAL_MS ?? 5000),
     // PORT is the common convention (Render, Railway); SERVER_PORT is
     // Bot-Hosting.net's — support whichever the host injects.

@@ -5,15 +5,19 @@ import * as repo from "../../db/repository.js";
 export function regionsRouter(db: Db): Router {
   const router = Router();
 
-  router.get("/:code/average", (req, res) => {
-    const code = Number(req.params.code);
-    const epoch = Number(req.query.epoch);
-    if (!Number.isFinite(code) || !Number.isFinite(epoch)) {
-      res.status(400).json({ error: "region code and ?epoch= query param must be numbers" });
-      return;
+  router.get("/:code/average", async (req, res, next) => {
+    try {
+      const code = Number(req.params.code);
+      const epoch = Number(req.query.epoch);
+      if (!Number.isFinite(code) || !Number.isFinite(epoch)) {
+        res.status(400).json({ error: "region code and ?epoch= query param must be numbers" });
+        return;
+      }
+      const average = await repo.regionAverage(db, code, epoch);
+      res.json({ regionCode: code, epoch, average });
+    } catch (err) {
+      next(err);
     }
-    const average = repo.regionAverage(db, code, epoch);
-    res.json({ regionCode: code, epoch, average });
   });
 
   return router;

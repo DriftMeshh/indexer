@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { openDb, type Db } from "../src/db/client.js";
+import { type Db } from "../src/db/client.js";
 import { createApp } from "../src/api/app.js";
 import type { Config } from "../src/config.js";
+import { createTestDb, closeTestDb } from "./helpers/db.js";
 
 const { isEpochFinalMock, getTotalSubmissionsMock, epochPoolMock } = vi.hoisted(() => ({
   isEpochFinalMock: vi.fn(),
@@ -33,7 +34,7 @@ function baseConfig(): Config {
       paymentStreamer: "CSTREAMER",
       subscriptionMarket: "CMARKET",
     },
-    dbPath: ":memory:",
+    databaseUrl: "postgresql://driftmesh:driftmesh@127.0.0.1:5432/driftmesh",
     pollIntervalMs: 5000,
     port: 0,
     // Generous enough that this file's handful of requests per test never
@@ -48,11 +49,15 @@ function baseConfig(): Config {
 describe("GET /epochs/:epoch", () => {
   let db: Db;
 
-  beforeEach(() => {
-    db = openDb(":memory:");
+  beforeEach(async () => {
+    db = await createTestDb();
     isEpochFinalMock.mockReset();
     getTotalSubmissionsMock.mockReset();
     epochPoolMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await closeTestDb(db);
   });
 
   it("returns live finality/totals/pool from the chain", async () => {

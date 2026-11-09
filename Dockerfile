@@ -1,10 +1,7 @@
 FROM node:22-slim
 
-# better-sqlite3 ships prebuilt binaries for common platforms, but if
-# none matches this exact image, npm falls back to compiling from
-# source — these let that fallback succeed instead of failing the build.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
+# pg (node-postgres) is a pure-JS driver — no native compilation needed,
+# so we no longer require python3/make/g++ here. The image stays lean.
 
 WORKDIR /app
 

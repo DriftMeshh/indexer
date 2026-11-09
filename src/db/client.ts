@@ -1,125 +1,62 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-
-const SCHEMA = `
--- owner/lat/lon are nullable: the "reg_dev" event only carries device_type,
--- not the rest of the Device record (see README's "Known limitations" —
--- a Wave issue to either enrich the event or have the poller read the
--- full record via a contract call is left open).
-CREATE TABLE IF NOT EXISTS devices (
-  address TEXT PRIMARY KEY,
-  owner TEXT,
-  device_type TEXT NOT NULL,
-  lat INTEGER,
-  lon INTEGER,
-  registered_at INTEGER NOT NULL,
-  active INTEGER NOT NULL DEFAULT 1,
-  -- Denormalized from the disputes table (same pattern as "active") so
-  -- GET /devices can surface them without a join per row.
-  open_disputes INTEGER NOT NULL DEFAULT 0,
-  upheld_disputes INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS readings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  device_address TEXT NOT NULL,
-  device_type TEXT,
-  region_code INTEGER NOT NULL,
-  epoch INTEGER NOT NULL,
-  value INTEGER NOT NULL,
-  accepted INTEGER NOT NULL,
-  ledger INTEGER NOT NULL,
-  closed_at TEXT NOT NULL,
-  tx_hash TEXT NOT NULL,
-  UNIQUE(tx_hash, device_address)
-);
-CREATE INDEX IF NOT EXISTS idx_readings_device ON readings(device_address);
-CREATE INDEX IF NOT EXISTS idx_readings_region_epoch ON readings(region_code, epoch);
-
-CREATE TABLE IF NOT EXISTS claims (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  device_address TEXT NOT NULL,
-  epoch INTEGER NOT NULL,
-  payout TEXT NOT NULL,
-  ledger INTEGER NOT NULL,
-  closed_at TEXT NOT NULL,
-  tx_hash TEXT NOT NULL,
-  UNIQUE(device_address, epoch)
-);
-CREATE INDEX IF NOT EXISTS idx_claims_device ON claims(device_address);
-
-CREATE TABLE IF NOT EXISTS subscriptions (
-  subscriber TEXT PRIMARY KEY,
-  periods_last_purchase INTEGER NOT NULL,
-  expiry INTEGER NOT NULL,
-  updated_at_ledger INTEGER NOT NULL
-);
-
--- One row per watched contract, tracking how far the poller has ingested.
-CREATE TABLE IF NOT EXISTS ingest_cursor (
-  contract_id TEXT PRIMARY KEY,
-  last_ledger INTEGER NOT NULL
-);
-
--- One row per raise_dispute call. device-registry only allows one open
--- dispute per device at a time, so the later dispute_resolved event (which
--- carries no dispute ID of its own) is matched to whichever row for that
--- device_address is still status='open' — see repository.ts's resolveDispute.
-CREATE TABLE IF NOT EXISTS disputes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  device_address TEXT NOT NULL,
-  disputer TEXT NOT NULL,
-  evidence_hash TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open', -- 'open' | 'upheld' | 'dismissed'
-  raised_ledger INTEGER NOT NULL,
-  raised_closed_at TEXT NOT NULL,
-  raised_tx_hash TEXT NOT NULL,
-  resolved_ledger INTEGER,
-  resolved_closed_at TEXT,
-  resolved_tx_hash TEXT,
-  UNIQUE(raised_tx_hash, device_address)
-);
-CREATE INDEX IF NOT EXISTS idx_disputes_device ON disputes(device_address);
-
-CREATE TABLE IF NOT EXISTS auto_slash_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  device_address TEXT NOT NULL,
-  rejected_count INTEGER NOT NULL,
-  threshold INTEGER NOT NULL,
-  ledger INTEGER NOT NULL,
-  closed_at TEXT NOT NULL,
-  tx_hash TEXT NOT NULL,
-  UNIQUE(tx_hash, device_address)
-);
-CREATE INDEX IF NOT EXISTS idx_auto_slash_device ON auto_slash_events(device_address);
-`;
-
-export type Db = Database.Database;
+import { Pool } from "pg";
+import { runner as runMigrations } from "node-pg-migrate";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 /**
- * Adds a column to an existing table if it isn't there yet. `CREATE TABLE
- * IF NOT EXISTS` only helps on a brand-new database — an existing
- * `devices` table from before `open_disputes`/`upheld_disputes` existed
- * needs this instead. There's no real migration tool here (see the
- * README's known limitations); this is the lightweight stand-in for it.
+ * `Db` is the shared connection-pool type passed through the entire
+ * application.  Every function in `repository.ts` accepts a `Db` so
+ * that the pool is created once at startup and reused across requests
+ * and poll cycles.
+ *
+ * We expose the raw `Pool` rather than a single `Client` so that
+ * concurrent HTTP requests and the background poller can each borrow
+ * a connection from the pool independently without serializing on a
+ * single connection.
  */
-function ensureColumn(db: Database.Database, table: string, column: string, definition: string): void {
-  const existing = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (!existing.some((c) => c.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
-}
+export type Db = Pool;
 
-/** Opens (and migrates) the SQLite database at `path`. Pass ":memory:" for tests. */
-export function openDb(path: string): Db {
-  if (path !== ":memory:") {
-    mkdirSync(dirname(path), { recursive: true });
-  }
-  const db = new Database(path);
-  db.pragma("journal_mode = WAL");
-  db.exec(SCHEMA);
-  ensureColumn(db, "devices", "open_disputes", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "devices", "upheld_disputes", "INTEGER NOT NULL DEFAULT 0");
-  return db;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Migrations live at <repo-root>/migrations/ regardless of whether we're
+// running from src/ (ts-node/tsx) or dist/ (compiled JS).
+const MIGRATIONS_DIR = join(__dirname, "../../migrations");
+
+/**
+ * Opens a connection pool to the Postgres database at `connectionString`
+ * and runs any pending migrations before returning.
+ *
+ * Pass `":memory:"` (the old SQLite sentinel) as `connectionString` only
+ * in tests via the `TEST_DATABASE_URL` env var indirection — the actual
+ * connection string must be a valid `postgresql://` URL in all real
+ * environments.
+ *
+ * Why run migrations here instead of as a separate deploy step?
+ *  - For a single-instance service this is safe: the pool is created
+ *    before any request is served, so migrations always complete first.
+ *  - `node-pg-migrate` uses an advisory lock (`pgmigrations` table +
+ *    Postgres advisory lock) so concurrent restarts don't double-apply.
+ *  - For multi-instance (e.g. k8s rolling deploy) the safe pattern is
+ *    a pre-deploy migration job; this function still works there because
+ *    `node-pg-migrate` is idempotent — already-applied migrations are
+ *    skipped.
+ */
+export async function openDb(connectionString: string): Promise<Db> {
+  const pool = new Pool({ connectionString });
+
+  // Verify connectivity before running migrations so the error is
+  // "cannot connect to Postgres" rather than a confusing migration error.
+  await pool.query("SELECT 1");
+
+  await runMigrations({
+    databaseUrl: connectionString,
+    migrationsTable: "pgmigrations",
+    dir: MIGRATIONS_DIR,
+    direction: "up",
+    log: () => {},   // silence migration output; errors still throw
+    // node-pg-migrate can receive either a URL string or a pool; passing
+    // the string lets it manage its own short-lived connection for the
+    // migration transaction, which avoids tying up a pool slot.
+  });
+
+  return pool;
 }

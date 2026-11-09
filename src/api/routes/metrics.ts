@@ -74,7 +74,7 @@ export function metricsRouter(
       try {
         const tip = await latestLedger(config.rpcUrl);
         for (const [label, contractId] of contracts) {
-          const cursor = repo.getCursor(db, contractId);
+          const cursor = await repo.getCursor(db, contractId);
           // cursor === 0 means "never polled yet", not "0 ledgers behind" —
           // report a lag of 0 rather than a huge, meaningless tip-minus-0 number.
           const lag = cursor === 0 ? 0 : Math.max(tip - cursor, 0);

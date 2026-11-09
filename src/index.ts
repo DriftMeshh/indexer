@@ -19,55 +19,62 @@ process.on("uncaughtException", (err) => {
   logger.error("index", "uncaught exception (continuing)", serializeError(err));
 });
 
-const config = loadConfig();
-const db = openDb(config.dbPath);
+async function main(): Promise<void> {
+  const config = loadConfig();
+  const db = await openDb(config.databaseUrl);
 
-const watchedContracts = configuredContractIds(config);
-let poller: ReturnType<typeof startPolling> | undefined;
-if (watchedContracts.length === 0) {
-  logger.warn(
-    "index",
-    "no contract IDs configured — the API will serve an empty dataset until " +
-      "DEVICE_REGISTRY_CONTRACT_ID etc. are set in .env. See .env.example.",
-  );
-} else {
-  poller = startPolling({ db, config }, config.pollIntervalMs);
-  logger.info("index", "polling started", {
-    contractCount: watchedContracts.length,
-    pollIntervalMs: config.pollIntervalMs,
+  const watchedContracts = configuredContractIds(config);
+  let poller: ReturnType<typeof startPolling> | undefined;
+  if (watchedContracts.length === 0) {
+    logger.warn(
+      "index",
+      "no contract IDs configured — the API will serve an empty dataset until " +
+        "DEVICE_REGISTRY_CONTRACT_ID etc. are set in .env. See .env.example.",
+    );
+  } else {
+    poller = startPolling({ db, config }, config.pollIntervalMs);
+    logger.info("index", "polling started", {
+      contractCount: watchedContracts.length,
+      pollIntervalMs: config.pollIntervalMs,
+    });
+  }
+
+  const app = createApp(db, config, () => poller?.metrics());
+  const server = app.listen(config.port, () => {
+    logger.info("index", "API listening", { port: config.port });
   });
+
+  /**
+   * A deploy restart or container stop sends SIGTERM (Ctrl-C sends SIGINT
+   * locally). Without handling it, the process dies mid-write: a poll cycle
+   * that's partway through an insert, or an HTTP response still being
+   * written. Shut down in dependency order instead — stop taking new poll
+   * cycles and new HTTP connections first, let whatever's already in flight
+   * finish, then close the DB last, since both the poller and any in-flight
+   * request may still touch it right up until they settle.
+   */
+  let shuttingDown = false;
+  async function shutdown(signal: NodeJS.Signals): Promise<void> {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info("index", "shutting down gracefully", { signal });
+
+    poller?.stop();
+    const closeServer = new Promise<void>((resolve) => server.close(() => resolve()));
+
+    await poller?.whenIdle();
+    await closeServer;
+
+    await db.end();
+    logger.info("index", "shutdown complete");
+    process.exit(0);
+  }
+
+  process.on("SIGTERM", (signal) => void shutdown(signal));
+  process.on("SIGINT", (signal) => void shutdown(signal));
 }
 
-const app = createApp(db, config, () => poller?.metrics());
-const server = app.listen(config.port, () => {
-  logger.info("index", "API listening", { port: config.port });
+main().catch((err) => {
+  logger.error("index", "startup error — exiting", serializeError(err));
+  process.exit(1);
 });
-
-/**
- * A deploy restart or container stop sends SIGTERM (Ctrl-C sends SIGINT
- * locally). Without handling it, the process dies mid-write: a poll cycle
- * that's partway through an insert, or an HTTP response still being
- * written. Shut down in dependency order instead — stop taking new poll
- * cycles and new HTTP connections first, let whatever's already in flight
- * finish, then close the DB last, since both the poller and any in-flight
- * request may still touch it right up until they settle.
- */
-let shuttingDown = false;
-async function shutdown(signal: NodeJS.Signals): Promise<void> {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  logger.info("index", "shutting down gracefully", { signal });
-
-  poller?.stop();
-  const closeServer = new Promise<void>((resolve) => server.close(() => resolve()));
-
-  await poller?.whenIdle();
-  await closeServer;
-
-  db.close();
-  logger.info("index", "shutdown complete");
-  process.exit(0);
-}
-
-process.on("SIGTERM", (signal) => void shutdown(signal));
-process.on("SIGINT", (signal) => void shutdown(signal));
