@@ -16,6 +16,16 @@ export interface Config {
   };
   /** When set, every request must carry this value in X-API-Key. Unset (the default) means no auth — fine for local/demo use. */
   apiKey: string | undefined;
+  /** Horizon (not Soroban RPC) — trustlines are classic-Stellar account state, which only Horizon exposes. */
+  horizonUrl: string;
+  /**
+   * The reward asset's classic code+issuer, used to check whether a
+   * device holds a trustline to it (see routes/devices.ts's payoutReady
+   * field). Not derivable from `contracts.paymentStreamer` alone without
+   * an extra contract read, so it's its own pair of env vars — these are
+   * deployment-time constants anyway (the asset doesn't change).
+   */
+  rewardAsset: { code: string; issuer: string } | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -41,6 +51,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       max: Number(env.RATE_LIMIT_MAX ?? 100),
     },
     apiKey: env.API_KEY,
+    horizonUrl: env.HORIZON_URL ?? "https://horizon-testnet.stellar.org",
+    rewardAsset:
+      env.REWARD_ASSET_CODE && env.REWARD_ASSET_ISSUER
+        ? { code: env.REWARD_ASSET_CODE, issuer: env.REWARD_ASSET_ISSUER }
+        : undefined,
   };
 }
 

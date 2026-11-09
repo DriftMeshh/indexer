@@ -19,6 +19,8 @@ function baseConfig(overrides?: Partial<Config>): Config {
     port: 0,
     rateLimit: { windowMs: 60_000, max: 2 },
     apiKey: undefined,
+    horizonUrl: "https://horizon.example",
+    rewardAsset: undefined,
     ...overrides,
   };
 }

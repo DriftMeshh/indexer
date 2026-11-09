@@ -27,6 +27,8 @@ function baseConfig(): Config {
     // trips the limiter — rate limiting itself has its own test file.
     rateLimit: { windowMs: 60_000, max: 1000 },
     apiKey: undefined,
+    horizonUrl: "https://horizon.example",
+    rewardAsset: undefined,
   };
 }
 
