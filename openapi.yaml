@@ -4,7 +4,15 @@ info:
   description: >
     Read-only REST API over device/reading/claim/subscription data indexed
     from the DriftMesh Soroban contracts on Stellar testnet. Every route is
-    a public GET with no authentication.
+    a public GET. No authentication by default; a deployment may set the
+    API_KEY env var to require an X-API-Key header (see ApiKeyAuth below) —
+    exercised in this repo's own tests, but not enforced in this spec's
+    `security`, since it's an opt-in per-deployment setting, not a fixed
+    property of the API itself. Also rate-limited (default 100
+    requests/minute/IP, configurable via RATE_LIMIT_WINDOW_MS/
+    RATE_LIMIT_MAX) — a 429 response carries `{"error": "too many
+    requests, try again later"}`. GET /health is exempt from both the
+    rate limit and the API-key check.
   version: "0.1.0"
   license:
     name: MIT
@@ -263,6 +271,16 @@ paths:
                 $ref: "#/components/schemas/Error"
 
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: >
+        Only enforced when the deployment sets the API_KEY env var; absent
+        (the default) means every route is open, same as today. Not
+        referenced by this spec's root `security` — see info.description.
+
   parameters:
     Address:
       name: address

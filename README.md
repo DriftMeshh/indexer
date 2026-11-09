@@ -55,6 +55,23 @@ Responses are wrapped in a JSON envelope:
 - Float values for `limit` and `offset` are accepted and truncated:
   `limit=2.9` is treated as `limit=2`.
 
+## Rate limiting and authentication
+
+Open by default, matching a free-tier demo deployment — tune via env
+vars for a production one:
+
+| Env var               | Default | Effect                                              |
+|------------------------|---------|------------------------------------------------------|
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window, in ms                             |
+| `RATE_LIMIT_MAX`       | `100`   | Max requests per IP per window                       |
+| `API_KEY`              | unset   | If set, every request needs a matching `X-API-Key`   |
+
+`GET /health` is exempt from both, so a host's liveness probe is never
+the reason a deployment looks "down". A rate-limited request gets `429`
+with `{"error": "too many requests, try again later"}`; a missing or
+wrong API key gets `401` with `{"error": "missing or invalid
+X-API-Key"}`.
+
 ## Why this exists
 
 The four contracts work on their own, but nobody can see what's
@@ -84,7 +101,7 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 131 tests: parser, repository, poller (RPC mocked), API, logger, migration, epochs, metrics
+npm test                # 141 tests: parser, repository, poller (RPC mocked), API, logger, migration, epochs, metrics, rate limiting
 npm run typecheck
 npm run build && npm start   # production build
 ```
