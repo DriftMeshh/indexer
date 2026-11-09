@@ -72,6 +72,18 @@ with `{"error": "too many requests, try again later"}`; a missing or
 wrong API key gets `401` with `{"error": "missing or invalid
 X-API-Key"}`.
 
+## Payout readiness (trustline check)
+
+A device needs a trustline to the reward asset before it can successfully
+claim a payout — discovered the hard way during manual testnet
+verification, where a missing trustline surfaces as an opaque contract
+error with no hint that's the fix. Set `HORIZON_URL` (defaults to
+`https://horizon-testnet.stellar.org`) plus `REWARD_ASSET_CODE` and
+`REWARD_ASSET_ISSUER` to have `GET /devices/{address}` include a
+`payoutReady` field — `true`/`false` from a live Horizon lookup (cached
+60s per address), or `null` if the lookup itself failed. The field is
+omitted entirely (not `null`) when these env vars aren't set.
+
 ## Why this exists
 
 The four contracts work on their own, but nobody can see what's
@@ -101,7 +113,7 @@ out through the REST API (region average computed correctly from real
 on-chain values, claim payout matched exactly).
 
 ```bash
-npm test                # 141 tests: parser, repository, poller (RPC mocked), API, logger, migration, epochs, metrics, rate limiting
+npm test                # 155 tests: parser, repository, poller (RPC mocked), API, logger, migration, epochs, metrics, rate limiting, payout readiness
 npm run typecheck
 npm run build && npm start   # production build
 ```

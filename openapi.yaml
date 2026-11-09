@@ -352,6 +352,18 @@ components:
         upheld_disputes:
           type: integer
           description: Lifetime count of disputes resolved as upheld (slashed)
+        payoutReady:
+          type: boolean
+          nullable: true
+          description: >
+            Only present on GET /devices/{address} (never on the GET
+            /devices list), and only when the deployment configures
+            HORIZON_URL + REWARD_ASSET_CODE/REWARD_ASSET_ISSUER. true/false
+            is a real answer (does this account hold a trustline to the
+            reward asset yet); null means the Horizon lookup itself
+            failed — different from "checked and it's false". The field
+            is absent entirely, not null, when this deployment doesn't
+            check trustlines at all.
 
     Dispute:
       type: object
