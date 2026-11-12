@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { openDb, type Db } from "../src/db/client.js";
+import type { Db } from "../src/db/client.js";
+import { createTestDb, closeTestDb } from "./helpers/db.js";
 import * as repo from "../src/db/repository.js";
 import { createApp } from "../src/api/app.js";
 import type { Config } from "../src/config.js";
@@ -37,9 +38,9 @@ function baseConfig(overrides?: Partial<Config>): Config {
 describe("GET /devices/:address payoutReady", () => {
   let db: Db;
 
-  beforeEach(() => {
-    db = openDb(":memory:");
-    repo.upsertDevice(db, {
+  beforeEach(async () => {
+    db = await createTestDb();
+    await repo.upsertDevice(db, {
       address: "DEV1",
       owner: "OWNER1",
       device_type: "weather",
@@ -48,6 +49,10 @@ describe("GET /devices/:address payoutReady", () => {
       registered_at: 1000,
     });
     fetchPayoutReadinessMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await closeTestDb(db);
   });
 
   it("omits payoutReady when createApp receives no config", async () => {
