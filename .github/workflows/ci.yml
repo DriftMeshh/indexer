@@ -8,14 +8,30 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The test suite talks to a real Postgres (see test/helpers/db.ts) —
+    # no mocking, matching this project's "verify live" discipline. This
+    # service's user/password/db match TEST_DATABASE_URL's documented
+    # default exactly, so the test step needs no extra env override.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: driftmesh
+          POSTGRES_PASSWORD: driftmesh
+          POSTGRES_DB: driftmesh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
-      # Pinned, not "lts/*": better-sqlite3@11.10.0 only ships a prebuilt
-      # binary up to Node 22's ABI, so a newer "latest LTS" forces a
-      # from-source node-gyp build that fails against that Node version's
-      # V8 headers (PropertyCallbackInfo lost its .This() method). Hit
-      # this for real when GitHub's runner moved lts/* to Node 26.
+      # Pinned, not "lts/*": the runner's "latest LTS" has jumped ahead of
+      # this project's supported Node version before. Keep this pinned to
+      # match package.json's engines field.
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
