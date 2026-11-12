@@ -5,3 +5,4 @@ data/
 *.sqlite-journal
 .env
 .DS_Store
+.neon
