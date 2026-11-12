@@ -56,6 +56,15 @@ export async function openDb(connectionString: string): Promise<Db> {
     // node-pg-migrate can receive either a URL string or a pool; passing
     // the string lets it manage its own short-lived connection for the
     // migration transaction, which avoids tying up a pool slot.
+    //
+    // "wait" (not the default "fail"): every call to openDb() runs this,
+    // and the test suite opens many pools concurrently against the same
+    // database (one per test file, run in parallel). With the default
+    // "fail" lock mode, whichever caller loses the race gets a hard
+    // error instead of just waiting its turn — migrations are idempotent
+    // (already-applied ones are skipped), so queuing briefly is the
+    // correct behavior here, not a sign of a stuck migration.
+    advisoryLockMode: "wait",
   });
 
   return pool;
